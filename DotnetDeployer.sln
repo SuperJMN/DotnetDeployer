@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetDeployer.Tool", "src\DotnetDeployer.Tool\DotnetDeployer.Tool.csproj", "{A8F5DF73-7286-4CB9-8C6A-B49889CF613C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetDeployer", "src\DotnetDeployer\DotnetDeployer.csproj", "{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A8F5DF73-7286-4CB9-8C6A-B49889CF613C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8F5DF73-7286-4CB9-8C6A-B49889CF613C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8F5DF73-7286-4CB9-8C6A-B49889CF613C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A8F5DF73-7286-4CB9-8C6A-B49889CF613C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

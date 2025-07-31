@@ -1,0 +1,16 @@
+variables:
+  - group: api-keys
+  - name: Agent.Source.Git.ShallowFetchDepth
+    value: 0
+
+steps:
+  - checkout: self
+    submodules: true
+
+  - pwsh: dotnet run --project src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj -- nuget --api-key $(NugetApiKey) --no-push
+    displayName: Create NuGet packages only
+    condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'refs/heads/master'))
+
+  - pwsh: dotnet run --project src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj -- nuget --api-key $(NugetApiKey)
+    displayName: Create and Publish NuGet packages
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
