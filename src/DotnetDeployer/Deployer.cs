@@ -67,7 +67,18 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var releaseBody = releaseData.ReleaseBody;
         var isDraft = releaseData.IsDraft;
         var isPrerelease = releaseData.IsPrerelease;
-        Context.Logger.Information("Creating GitHub release with files: {@Files} for owner {Owner}, repository {Repository}", files.Select(f => f.Name), repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
+        Context.Logger.Information(
+            "Creating GitHub release with files: {@Files} for owner {Owner}, repository {Repository}",
+            files.Select(f => f.Name),
+            repositoryConfig.OwnerName,
+            repositoryConfig.RepositoryName);
+        Context.Logger.Information(
+            "Release details - Name: {ReleaseName}, Tag: {Tag}, Draft: {IsDraft}, Prerelease: {IsPrerelease}, Body: {Body}",
+            releaseName,
+            tag,
+            isDraft,
+            isPrerelease,
+            releaseBody);
 
         var gitHubRelease = new GitHubReleaseUsingGitHubApi(Context, files, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
         return await gitHubRelease.CreateRelease(tag, releaseName, releaseBody, isDraft, isPrerelease)
@@ -82,7 +93,13 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             {
                 if (dryRun)
                 {
-                    Context.Logger.Information("Dry run enabled. Skipping GitHub release creation for tag {Tag}", releaseData.Tag);
+                    Context.Logger.Information(
+                        "Dry run enabled. Release details - Name: {ReleaseName}, Tag: {Tag}, Draft: {IsDraft}, Prerelease: {IsPrerelease}, Body: {Body}",
+                        releaseData.ReleaseName,
+                        releaseData.Tag,
+                        releaseData.IsDraft,
+                        releaseData.IsPrerelease,
+                        releaseData.ReleaseBody);
                     foreach (var file in files)
                     {
                         Context.Logger.Information("Would publish {File}", file.Name);
