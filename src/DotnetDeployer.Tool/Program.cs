@@ -151,6 +151,10 @@ static class Program
         var bodyOption = new Option<string>("--body", () => string.Empty);
         var draftOption = new Option<bool>("--draft");
         var prereleaseOption = new Option<bool>("--prerelease");
+        var dryRunOption = new Option<bool>("--dry-run")
+        {
+            Description = "Simulate release creation without uploading to GitHub"
+        };
 
         var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "wasm" })
         {
@@ -179,6 +183,7 @@ static class Program
         cmd.AddOption(bodyOption);
         cmd.AddOption(draftOption);
         cmd.AddOption(prereleaseOption);
+        cmd.AddOption(dryRunOption);
         cmd.AddOption(platformsOption);
         cmd.AddOption(androidKeystoreOption);
         cmd.AddOption(androidKeyAliasOption);
@@ -223,6 +228,7 @@ static class Program
             var body = context.ParseResult.GetValueForOption(bodyOption)!;
             var draft = context.ParseResult.GetValueForOption(draftOption);
             var prerelease = context.ParseResult.GetValueForOption(prereleaseOption);
+            var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
             var platforms = context.ParseResult.GetValueForOption(platformsOption)!;
             var keystoreBase64 = context.ParseResult.GetValueForOption(androidKeystoreOption);
             var keyAlias = context.ParseResult.GetValueForOption(androidKeyAliasOption);
@@ -287,7 +293,7 @@ static class Program
             var repositoryConfig = new GitHubRepositoryConfig(owner, repository, token);
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
-            await Deployer.Instance.CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData)
+            await Deployer.Instance.CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
                 .WriteResult();
         });
 
