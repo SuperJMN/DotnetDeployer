@@ -146,7 +146,10 @@ static class Program
             IsRequired = true
         };
 
-        var releaseNameOption = new Option<string?>("--release-name");
+        var releaseNameOption = new Option<string?>("--release-name")
+        {
+            Description = "Release name. Use {Version} to include the version"
+        };
         var tagOption = new Option<string?>("--tag");
         var bodyOption = new Option<string>("--body", () => string.Empty);
         var draftOption = new Option<bool>("--draft");

@@ -88,6 +88,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     // New builder-based method for creating releases
     public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
     {
+        var resolved = releaseData.ReplaceVersion(releaseConfig.Version);
         return packagingStrategy.PackageForPlatforms(releaseConfig)
             .Bind(async files =>
             {
@@ -107,7 +108,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
                     return Result.Success();
                 }
 
-                return await CreateGitHubRelease(files.ToList(), repositoryConfig, releaseData);
+                return await CreateGitHubRelease(files.ToList(), repositoryConfig, resolved);
             });
     }
 
