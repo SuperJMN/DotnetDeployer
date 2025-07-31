@@ -75,10 +75,23 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // New builder-based method for creating releases
-    public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData)
+    public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
     {
         return packagingStrategy.PackageForPlatforms(releaseConfig)
-            .Bind(files => CreateGitHubRelease(files.ToList(), repositoryConfig, releaseData));
+            .Bind(async files =>
+            {
+                if (dryRun)
+                {
+                    Context.Logger.Information("Dry run enabled. Skipping GitHub release creation for tag {Tag}", releaseData.Tag);
+                    foreach (var file in files)
+                    {
+                        Context.Logger.Information("Would publish {File}", file.Name);
+                    }
+                    return Result.Success();
+                }
+
+                return await CreateGitHubRelease(files.ToList(), repositoryConfig, releaseData);
+            });
     }
 
     // Instance method to create a new builder with Context
