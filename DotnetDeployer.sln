@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetDeployer.Tool", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetDeployer", "src\DotnetDeployer\DotnetDeployer.csproj", "{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetDeployer.Tests", "test\DotnetDeployer.Tests\DotnetDeployer.Tests.csproj", "{F6C208A9-5741-4D15-8E15-BFA9CAA32A8A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FCB3DB5E-FD52-44C0-A730-AC586F2351CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6C208A9-5741-4D15-8E15-BFA9CAA32A8A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6C208A9-5741-4D15-8E15-BFA9CAA32A8A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6C208A9-5741-4D15-8E15-BFA9CAA32A8A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6C208A9-5741-4D15-8E15-BFA9CAA32A8A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
