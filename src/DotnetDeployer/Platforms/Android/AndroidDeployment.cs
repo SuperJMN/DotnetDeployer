@@ -48,13 +48,16 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
     private IEnumerable<INamedByteSource> ApkFiles(IContainer directory)
     {
+        const string signedSuffix = "-Signed";
+
         return directory.ResourcesWithPathsRecursive()
-            .Where(file => file.Name.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+            .Where(file => file.Name.EndsWith($"{signedSuffix}.apk", StringComparison.OrdinalIgnoreCase))
             .Select(resource =>
             {
                 var originalName = global::System.IO.Path.GetFileNameWithoutExtension(resource.Name);
-                var dashIndex = originalName.LastIndexOf('-');
-                var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
+                var withoutSigned = originalName[..^signedSuffix.Length];
+                var firstDash = withoutSigned.IndexOf('-');
+                var suffix = firstDash >= 0 ? withoutSigned[firstDash..] : string.Empty;
                 var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}.apk";
                 return (INamedByteSource)new Resource(finalName, resource);
             })
