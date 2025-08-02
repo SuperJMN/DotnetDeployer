@@ -7,7 +7,7 @@ namespace DotnetDeployer.Tests;
 public class ApkNamingTests
 {
     [Fact]
-    public async Task Keeps_suffix_from_original_file_name()
+    public async Task Returns_only_signed_apk_without_suffix()
     {
         var files = new Dictionary<string, IByteSource>
         {
@@ -34,8 +34,7 @@ public class ApkNamingTests
 
         result.Should().Succeed();
         result.Value.Select(x => x.Name).Should().BeEquivalentTo(
-            "AngorApp-1.0.0-android.apk",
-            "AngorApp-1.0.0-android-Signed.apk");
+            "AngorApp-1.0.0-android.apk");
     }
 
     [Fact]
@@ -68,8 +67,7 @@ public class ApkNamingTests
 
         result.Should().Succeed();
         result.Value.Select(x => x.Name).Should().BeEquivalentTo(
-            "AngorApp-1.0.0-android.apk",
-            "AngorApp-1.0.0-android-Signed.apk");
+            "AngorApp-1.0.0-android.apk");
     }
 
     private class FakeDotnet(Result<IContainer> publishResult) : IDotnet
