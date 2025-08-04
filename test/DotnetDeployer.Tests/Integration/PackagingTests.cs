@@ -22,7 +22,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     [Fact]
     public async Task Test_windows()
     {
-        var dotnet = new Dotnet(new Command(Maybe<ILogger>.None), Maybe<ILogger>.None);
+        var dotnet = new Dotnet(new DotnetDeployer.Core.Command(Maybe<ILogger>.None), Maybe<ILogger>.None);
         
         var options = new WindowsDeployment.DeploymentOptions
         {
@@ -43,7 +43,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
         
-        var dotnet = new Dotnet(new Command(logger), logger);
+        var dotnet = new Dotnet(new DotnetDeployer.Core.Command(logger), logger);
         
         var store = ByteSource.FromBytes(await File.ReadAllBytesAsync("Integration/test.keystore"));
         
@@ -69,7 +69,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
   public Packager CreatePackager()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var dotnet = new Dotnet(new Command(logger), logger);
+        var dotnet = new Dotnet(new DotnetDeployer.Core.Command(logger), logger);
         return new Packager(dotnet, logger);
     }
     
@@ -88,7 +88,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public async Task Test_nuget_pack()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var dotnet = new Dotnet(new Command(logger), logger);
+        var dotnet = new Dotnet(new DotnetDeployer.Core.Command(logger), logger);
         
         var result = await CreatePackager()
             .CreateNugetPackage(DesktopProject, "1.0.0")
@@ -101,7 +101,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public async Task Test_nuget_push()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var command = new Command(logger);
+        var command = new DotnetDeployer.Core.Command(logger);
         var dotnet = new Dotnet(command, logger);
 
         var context = new Context(dotnet, command, logger, new DefaultHttpClientFactory());
@@ -115,7 +115,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public async Task Create_GitHub_release()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var command = new Command(logger);
+        var command = new DotnetDeployer.Core.Command(logger);
         var dotnet = new Dotnet(command, logger);
 
         var context = new Context(dotnet, command, logger, new DefaultHttpClientFactory());
@@ -153,7 +153,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public async Task Test_wasm_site()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var dotnet = new Dotnet(new Command(logger), logger);
+        var dotnet = new Dotnet(new DotnetDeployer.Core.Command(logger), logger);
 
         var result = await new Packager(dotnet, logger)
             .CreateWasmSite(WasmProject)
@@ -166,7 +166,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public async Task Create_GitHub_release_from_solution_discovery()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
-        var command = new Command(logger);
+        var command = new DotnetDeployer.Core.Command(logger);
         var dotnet = new Dotnet(command, logger);
 
         var context = new Context(dotnet, command, logger, new DefaultHttpClientFactory());
