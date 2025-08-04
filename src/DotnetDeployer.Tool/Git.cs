@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using CSharpFunctionalExtensions;
-using DotnetDeployer.Core;
+using DotnetPackaging;
 
 namespace DotnetDeployer.Tool;
 

@@ -2,7 +2,6 @@ using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Services.GitHub;
 using DotnetPackaging;
-using ProcessCommand = DotnetDeployer.Core.Command;
 using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.Misc;
 using Zafiro.Mixins;
@@ -19,7 +18,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         get
         {
             var logger = Maybe<ILogger>.From(Log.Logger);
-            var command = new ProcessCommand(logger);
+            var command = new Command(logger);
             var dotnet = new Dotnet(command, logger);
             var packager = new Packager(dotnet, logger);
             var defaultHttpClientFactory = new DefaultHttpClientFactory();
