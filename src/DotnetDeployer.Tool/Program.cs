@@ -138,8 +138,8 @@ static class Program
             Description = "Application name. Defaults to the solution name"
         };
 
-        var ownerOption = new Option<string>("--owner") { IsRequired = true };
-        var repoOption = new Option<string>("--repository") { IsRequired = true };
+        var ownerOption = new Option<string?>("--owner", "GitHub owner. Defaults to the current repository's owner");
+        var repoOption = new Option<string?>("--repository", "GitHub repository name. Defaults to the current repository");
         var tokenOption = new Option<string>("--token", () => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty)
         {
             Description = "GitHub token. Can be provided via GITHUB_TOKEN env var",
@@ -223,8 +223,8 @@ static class Program
                 appName ??= info.AppName;
             }
 
-            var owner = context.ParseResult.GetValueForOption(ownerOption)!;
-            var repository = context.ParseResult.GetValueForOption(repoOption)!;
+            var owner = context.ParseResult.GetValueForOption(ownerOption);
+            var repository = context.ParseResult.GetValueForOption(repoOption);
             var token = context.ParseResult.GetValueForOption(tokenOption)!;
             var releaseName = context.ParseResult.GetValueForOption(releaseNameOption);
             var tag = context.ParseResult.GetValueForOption(tagOption);
@@ -240,6 +240,21 @@ static class Program
             var androidAppVersion = context.ParseResult.GetValueForOption(androidAppVersionOption);
             var androidDisplayVersion = context.ParseResult.GetValueForOption(androidDisplayVersionOption);
 
+            var deployer = Deployer.Instance;
+
+            if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repository))
+            {
+                var repoResult = await Git.GetOwnerAndRepository(solution.Directory!, deployer.Context.Command);
+                if (repoResult.IsFailure)
+                {
+                    Log.Error("Owner and repository must be specified or inferred from the current Git repository: {Error}", repoResult.Error);
+                    return;
+                }
+
+                owner ??= repoResult.Value.Owner;
+                repository ??= repoResult.Value.Repository;
+            }
+
             if (string.IsNullOrWhiteSpace(token))
             {
                 Log.Error("GitHub token must be provided with --token or GITHUB_TOKEN");
@@ -251,7 +266,7 @@ static class Program
 
             var platformSet = new HashSet<string>(platforms.Select(p => p.ToLowerInvariant()));
 
-            var builder = Deployer.Instance.CreateRelease()
+            var builder = deployer.CreateRelease()
                 .WithApplicationInfo(packageName!, appId!, appName!)
                 .WithVersion(version!);
 
@@ -293,10 +308,10 @@ static class Program
             }
 
             var releaseConfig = builder.Build();
-            var repositoryConfig = new GitHubRepositoryConfig(owner, repository, token);
+            var repositoryConfig = new GitHubRepositoryConfig(owner!, repository!, token);
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
-            await Deployer.Instance.CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
+            await deployer.CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
                 .WriteResult();
         });
 
