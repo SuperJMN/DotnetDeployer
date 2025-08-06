@@ -30,7 +30,7 @@ static class Program
         return invokeAsync;
     }
 
-    static void UpdateBuildNumber(string version) =>
+    static Result UpdateBuildNumber(string version) =>
         Result.SuccessIf(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TF_BUILD")), string.Empty)
             .Tap(() => Console.WriteLine($"##vso[build.updatebuildnumber]{version}"));
 
