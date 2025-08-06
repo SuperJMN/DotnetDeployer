@@ -6,6 +6,7 @@ using DotnetDeployer.Platforms.Android;
 using DotnetPackaging;
 using Serilog;
 using Zafiro.DivineBytes;
+using CSharpFunctionalExtensions;
 using CliCommand = System.CommandLine.Command;
 
 namespace DotnetDeployer.Tool;
@@ -23,11 +24,15 @@ static class Program
         root.AddCommand(CreateReleaseCommand());
 
         var invokeAsync = await root.InvokeAsync(args);
-        
+
         Log.Logger.Information("DeployerTool Execution completed with exit code {ExitCode}", invokeAsync);
-        
+
         return invokeAsync;
     }
+
+    static void UpdateBuildNumber(string version) =>
+        Result.SuccessIf(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TF_BUILD")), string.Empty)
+            .Tap(() => Console.WriteLine($"##vso[build.updatebuildnumber]{version}"));
 
     private static CliCommand CreateNugetCommand()
     {
@@ -88,6 +93,7 @@ static class Program
                 Log.Error("Invalid version string '{Version}'", version);
                 return;
             }
+            UpdateBuildNumber(version);
             var apiKey = ctx.ParseResult.GetValueForOption(apiKeyOption)!;
             var pattern = ctx.ParseResult.GetValueForOption(patternOption);
             var noPush = ctx.ParseResult.GetValueForOption(noPushOption);
@@ -211,6 +217,8 @@ static class Program
 
                 version = versionResult.Value;
             }
+
+            UpdateBuildNumber(version);
 
             var packageName = context.ParseResult.GetValueForOption(packageNameOption);
             var appId = context.ParseResult.GetValueForOption(appIdOption);
