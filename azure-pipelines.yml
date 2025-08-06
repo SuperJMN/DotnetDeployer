@@ -7,14 +7,6 @@ steps:
   - checkout: self
     submodules: true
 
-  - pwsh: |
-      dotnet tool install --global GitVersion.Tool
-      $gitVersionPath = Join-Path $HOME ".dotnet/tools/dotnet-gitversion"
-      $gitVersionJson = & $gitVersionPath /output json
-      $gitVersion = $gitVersionJson | ConvertFrom-Json
-      Write-Host "##vso[build.updatebuildnumber]$($gitVersion.SemVer)"
-    displayName: Set build number
-
   - pwsh: dotnet run --project src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj -- nuget --api-key $(NugetApiKey) --no-push
     displayName: Create NuGet packages only
     condition: and(succeeded(), ne(variables['Build.SourceBranch'], 'refs/heads/master'))
