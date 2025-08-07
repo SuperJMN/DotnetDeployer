@@ -67,6 +67,16 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var releaseBody = releaseData.ReleaseBody;
         var isDraft = releaseData.IsDraft;
         var isPrerelease = releaseData.IsPrerelease;
+
+        var commitInfoResult = await GitInfo.GetCommitInfo(Environment.CurrentDirectory, Context.Command);
+        if (commitInfoResult.IsFailure)
+        {
+            return Result.Failure(commitInfoResult.Error);
+        }
+
+        var commitInfo = commitInfoResult.Value;
+        releaseBody = $"{releaseBody}\n\nCommit: {commitInfo.Commit}\n{commitInfo.Message}";
+
         Context.Logger.Information(
             "Creating GitHub release with files: {@Files} for owner {Owner}, repository {Repository}",
             files.Select(f => f.Name),
