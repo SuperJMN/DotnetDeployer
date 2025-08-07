@@ -61,7 +61,7 @@ public class Dotnet : IDotnet
         return GitInfo.GetCommitInfo(directory, Command)
             .Bind(commitInfo =>
                 Result.Try(() => filesystem.Directory.CreateTempSubdirectory())
-                    .Map(async outputDir =>
+                    .Bind(outputDir =>
                     {
                         var arguments = ArgumentsParser.Parse(
                             [["output", outputDir.FullName]],
@@ -71,12 +71,10 @@ public class Dotnet : IDotnet
                                 ["PackageReleaseNotes", commitInfo.Message]
                             ]);
 
-                        var result = await Command.Execute("dotnet", string.Join(" ", "pack", projectPath, arguments));
-                        if (result.IsFailure)
-                        {
-                            throw new InvalidOperationException(result.Error);
-                        }
-                        return new DirectoryContainer(outputDir);
+                        var finalArguments = string.Join(" ", "pack", projectPath, arguments);
+
+                        return Command.Execute("dotnet", finalArguments)
+                            .Map(_ => (IContainer)new DirectoryContainer(outputDir));
                     }))
             .Map(container => container.ResourcesRecursive())
             .Bind(sources => sources.TryFirst(file => file.Name.EndsWith(".nupkg")).ToResult("Cannot find any NuGet package in the output folder"));
