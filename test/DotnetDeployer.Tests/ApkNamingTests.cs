@@ -21,6 +21,7 @@ public class ApkNamingTests
         var options = new AndroidDeployment.DeploymentOptions
         {
             PackageName = "AngorApp",
+            ApplicationId = "io.Angor.AngorApp",
             ApplicationVersion = 1,
             ApplicationDisplayVersion = "1.0.0",
             AndroidSigningKeyStore = ByteSource.FromString("dummy"),
@@ -54,6 +55,7 @@ public class ApkNamingTests
         var options = new AndroidDeployment.DeploymentOptions
         {
             PackageName = "AngorApp",
+            ApplicationId = "io.Angor.AngorApp",
             ApplicationVersion = 1,
             ApplicationDisplayVersion = "1.0.0",
             AndroidSigningKeyStore = ByteSource.FromString("dummy"),

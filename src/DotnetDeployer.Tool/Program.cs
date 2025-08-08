@@ -224,11 +224,10 @@ static class Program
             var packageName = context.ParseResult.GetValueForOption(packageNameOption);
             var appId = context.ParseResult.GetValueForOption(appIdOption);
             var appName = context.ParseResult.GetValueForOption(appNameOption);
-            if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(appName))
+            if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName))
             {
                 var info = GuessApplicationInfo(solution);
                 packageName ??= info.PackageName;
-                appId ??= info.AppId;
                 appName ??= info.AppName;
             }
 
@@ -301,13 +300,46 @@ static class Program
             if (android != default && platformSet.Contains("android") &&
                 keystoreBase64 != null && keyAlias != null && keyPass != null && storePass != null)
             {
+                // Resolve ApplicationId with priority:
+                // 1) Explicit --app-id
+                // 2) From Android csproj <ApplicationId>
+                // 3) Fallback: io.{owner}.{packageName} (sanitized, lower, no dashes)
+                string? resolvedAppId = appId;
+                if (string.IsNullOrWhiteSpace(resolvedAppId))
+                {
+                    try
+                    {
+                        var doc = XDocument.Load(android.Path);
+                        var appIdElement = doc.Descendants()
+                            .FirstOrDefault(e => e.Name.LocalName.Equals("ApplicationId", StringComparison.OrdinalIgnoreCase));
+                        if (appIdElement != null && !string.IsNullOrWhiteSpace(appIdElement.Value))
+                        {
+                            resolvedAppId = appIdElement.Value.Trim();
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+                if (string.IsNullOrWhiteSpace(resolvedAppId))
+                {
+                    string Sanitize(string s) => new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+                    var ownerSan = Sanitize(owner);
+                    var pkgSan = Sanitize(packageName!);
+                    resolvedAppId = $"io.{ownerSan}.{pkgSan}";
+                }
+
+                Log.Information("[Resolver] PackageName: {PackageName}; ApplicationId: {ApplicationId}", packageName, resolvedAppId);
+
                 var keyBytes = Convert.FromBase64String(keystoreBase64);
                 var keystore = ByteSource.FromBytes(keyBytes);
                 var options = new AndroidDeployment.DeploymentOptions
                 {
-                    PackageName = packageName,
+                    PackageName = packageName!,
+                    ApplicationId = resolvedAppId!,
                     ApplicationVersion = androidAppVersion,
-                    ApplicationDisplayVersion = androidDisplayVersion ?? version,
+                    ApplicationDisplayVersion = androidDisplayVersion ?? version!,
                     AndroidSigningKeyStore = keystore,
                     SigningKeyAlias = keyAlias,
                     SigningKeyPass = keyPass,

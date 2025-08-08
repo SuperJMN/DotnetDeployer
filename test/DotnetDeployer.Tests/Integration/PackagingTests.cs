@@ -51,6 +51,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         var options = new AndroidDeployment.DeploymentOptions
         {
             PackageName = "TestApp",
+            ApplicationId = "io.Angor.AngorApp",
             AndroidSigningKeyStore = store,
             ApplicationDisplayVersion = "1.0.0",
             ApplicationVersion = 1,
@@ -129,6 +130,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         var androidOptions = new AndroidDeployment.DeploymentOptions()
         {
             PackageName = "TestApp",
+            ApplicationId = "io.Angor.AngorApp",
             ApplicationDisplayVersion = "1.0.0",
             ApplicationVersion = 1,
             SigningKeyAlias = "android",
@@ -179,6 +181,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         var androidOptions = new AndroidDeployment.DeploymentOptions()
         {
             PackageName = "TestApp",
+            ApplicationId = "io.Angor.AngorApp",
             ApplicationDisplayVersion = "1.0.0",
             ApplicationVersion = 1,
             SigningKeyAlias = "android",
