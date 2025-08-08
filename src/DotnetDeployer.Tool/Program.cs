@@ -242,6 +242,7 @@ static class Program
 
             var packageName = context.ParseResult.GetValueForOption(packageNameOption);
             var appId = context.ParseResult.GetValueForOption(appIdOption);
+            var appIdExplicit = context.ParseResult.FindResultFor(appIdOption) != null && !string.IsNullOrWhiteSpace(appId);
             var appName = context.ParseResult.GetValueForOption(appNameOption);
             // If any of the app metadata is missing, infer sensible defaults from the solution name
             if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(appId))
@@ -249,7 +250,12 @@ static class Program
                 var info = GuessApplicationInfo(solution);
                 packageName ??= info.PackageName;
                 appName ??= info.AppName;
-                appId ??= info.AppId;
+                // Do NOT override appId here if the user didn't pass it explicitly.
+                // Android resolution will try to read it from the csproj first.
+                if (string.IsNullOrWhiteSpace(appId))
+                {
+                    appId = info.AppId; // placeholder for non-Android uses; Android resolver may override it later
+                }
             }
 
             var owner = context.ParseResult.GetValueForOption(ownerOption);
@@ -383,10 +389,12 @@ static class Program
                 Log.Information("[Discovery] Found Android project: {Project}. Android packaging will be configured.", android.Path);
                 // Resolve ApplicationId with priority:
                 // 1) Explicit --app-id
-                // 2) From Android csproj <ApplicationId>
+                // 2) From Android csproj <ApplicationId> (even if a default guess exists)
                 // 3) Fallback: io.{owner}.{packageName} (sanitized, lower, no dashes)
                 string? resolvedAppId = appId;
-                if (string.IsNullOrWhiteSpace(resolvedAppId))
+
+                // If the user did NOT explicitly provide --app-id, try to read it from the Android csproj
+                if (!appIdExplicit)
                 {
                     try
                     {
@@ -403,6 +411,7 @@ static class Program
                         // ignore
                     }
                 }
+
                 if (string.IsNullOrWhiteSpace(resolvedAppId))
                 {
                     string Sanitize(string s) => new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
