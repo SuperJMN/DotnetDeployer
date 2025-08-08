@@ -7,11 +7,13 @@
     <PackAsTool>true</PackAsTool>
     <RollForward>LatestMajor</RollForward>
     <ToolCommandName>dotnetdeployer</ToolCommandName>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="DotnetPackaging" />
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Zafiro.DivineBytes" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DotnetDeployer\DotnetDeployer.csproj" />

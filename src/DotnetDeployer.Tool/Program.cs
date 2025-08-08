@@ -153,10 +153,15 @@ static class Program
 
         var ownerOption = new Option<string?>("--owner", "GitHub owner. Defaults to the current repository's owner");
         var repoOption = new Option<string?>("--repository", "GitHub repository name. Defaults to the current repository");
-        var tokenOption = new Option<string>("--token", () => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty)
+        // Preferred option name
+        var githubTokenOption = new Option<string>("--github-token", () => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty)
         {
-            Description = "GitHub token. Can be provided via GITHUB_TOKEN env var",
-            IsRequired = true
+            Description = "GitHub API token. Can be provided via GITHUB_TOKEN env var"
+        };
+        // Backwards-compatible alias (deprecated)
+        var tokenOption = new Option<string>("--token")
+        {
+            Description = "Deprecated. Use --github-token instead"
         };
 
         var releaseNameOption = new Option<string?>("--release-name")
@@ -167,9 +172,15 @@ static class Program
         var bodyOption = new Option<string>("--body", () => string.Empty);
         var draftOption = new Option<bool>("--draft");
         var prereleaseOption = new Option<bool>("--prerelease");
+        // New name reflects behavior: build/package but do not publish
+        var noPublishOption = new Option<bool>("--no-publish")
+        {
+            Description = "Build and package artifacts but do not publish a GitHub release"
+        };
+        // Backwards-compatible alias (deprecated)
         var dryRunOption = new Option<bool>("--dry-run")
         {
-            Description = "Simulate release creation without uploading to GitHub"
+            Description = "Deprecated. Use --no-publish instead"
         };
 
         var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "wasm" })
@@ -193,12 +204,14 @@ static class Program
         cmd.AddOption(appNameOption);
         cmd.AddOption(ownerOption);
         cmd.AddOption(repoOption);
+        cmd.AddOption(githubTokenOption);
         cmd.AddOption(tokenOption);
         cmd.AddOption(releaseNameOption);
         cmd.AddOption(tagOption);
         cmd.AddOption(bodyOption);
         cmd.AddOption(draftOption);
         cmd.AddOption(prereleaseOption);
+        cmd.AddOption(noPublishOption);
         cmd.AddOption(dryRunOption);
         cmd.AddOption(platformsOption);
         cmd.AddOption(androidKeystoreOption);
@@ -230,22 +243,39 @@ static class Program
             var packageName = context.ParseResult.GetValueForOption(packageNameOption);
             var appId = context.ParseResult.GetValueForOption(appIdOption);
             var appName = context.ParseResult.GetValueForOption(appNameOption);
-            if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName))
+            // If any of the app metadata is missing, infer sensible defaults from the solution name
+            if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(appId))
             {
                 var info = GuessApplicationInfo(solution);
                 packageName ??= info.PackageName;
                 appName ??= info.AppName;
+                appId ??= info.AppId;
             }
 
             var owner = context.ParseResult.GetValueForOption(ownerOption);
             var repository = context.ParseResult.GetValueForOption(repoOption);
-            var token = context.ParseResult.GetValueForOption(tokenOption)!;
+            var githubToken = context.ParseResult.GetValueForOption(githubTokenOption) ?? string.Empty;
+            var legacyToken = context.ParseResult.GetValueForOption(tokenOption) ?? string.Empty;
+            var legacyTokenSpecified = context.ParseResult.FindResultFor(tokenOption) != null && !string.IsNullOrWhiteSpace(legacyToken);
+            if (legacyTokenSpecified)
+            {
+                Log.Warning("--token is deprecated. Use --github-token instead.");
+            }
+            var token = string.IsNullOrWhiteSpace(githubToken) ? legacyToken : githubToken;
             var releaseName = context.ParseResult.GetValueForOption(releaseNameOption);
             var tag = context.ParseResult.GetValueForOption(tagOption);
             var body = context.ParseResult.GetValueForOption(bodyOption)!;
             var draft = context.ParseResult.GetValueForOption(draftOption);
             var prerelease = context.ParseResult.GetValueForOption(prereleaseOption);
+            var noPublish = context.ParseResult.GetValueForOption(noPublishOption);
             var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
+            // Combine both flags. If --dry-run was explicitly passed, log a deprecation warning
+            var dryRunSpecified = context.ParseResult.FindResultFor(dryRunOption) != null && dryRun;
+            if (dryRunSpecified)
+            {
+                Log.Warning("--dry-run is deprecated. Use --no-publish instead.");
+            }
+            var skipPublish = noPublish || dryRun;
             var platforms = context.ParseResult.GetValueForOption(platformsOption)!;
             var keystoreBase64 = context.ParseResult.GetValueForOption(androidKeystoreOption);
             var keyAlias = context.ParseResult.GetValueForOption(androidKeyAliasOption);
@@ -271,7 +301,7 @@ static class Program
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                Log.Error("GitHub token must be provided with --token or GITHUB_TOKEN");
+                Log.Error("GitHub token must be provided with --github-token or GITHUB_TOKEN");
                 return;
             }
 
@@ -434,7 +464,7 @@ static class Program
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
             context.ExitCode = await deployer
-                .CreateGitHubRelease(releaseConfigResult.Value, repositoryConfig, releaseData, dryRun)
+                .CreateGitHubRelease(releaseConfigResult.Value, repositoryConfig, releaseData, skipPublish)
                 .WriteResult();
         });
 
