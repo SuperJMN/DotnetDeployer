@@ -108,7 +108,8 @@ static class Program
                 ? projects.Select(p => p.FullName)
                 : DiscoverPackableProjects(solution, pattern).Select(f => f.FullName);
 
-            await Deployer.Instance.PublishNugetPackages(projectList.ToList(), version, apiKey, push: !noPush)
+            ctx.ExitCode = await Deployer.Instance
+                .PublishNugetPackages(projectList.ToList(), version, apiKey, push: !noPush)
                 .WriteResult();
         });
 
@@ -319,7 +320,8 @@ static class Program
             var repositoryConfig = new GitHubRepositoryConfig(owner!, repository!, token);
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
-            await deployer.CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
+            context.ExitCode = await deployer
+                .CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
                 .WriteResult();
         });
 
