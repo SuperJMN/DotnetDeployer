@@ -237,18 +237,20 @@ public class ReleaseBuilder(Context context)
     }
     
     
-    public ReleaseConfiguration Build()
+    public Result<ReleaseConfiguration> Build()
     {
         if (string.IsNullOrWhiteSpace(configuration.Version))
         {
-            throw new InvalidOperationException("Version is required. Use WithVersion() first.");
+            context.Logger.Warn("Release build failed: Version is missing. Use WithVersion() first.");
+            return Result.Failure<ReleaseConfiguration>("Version is required. Use WithVersion() first.");
         }
         
         if (configuration.Platforms == TargetPlatform.None)
         {
-            throw new InvalidOperationException("At least one platform must be specified.");
+            context.Logger.Warn("Release build failed: No platforms specified.");
+            return Result.Failure<ReleaseConfiguration>("At least one platform must be specified.");
         }
         
-        return configuration;
+        return Result.Success(configuration);
     }
 }

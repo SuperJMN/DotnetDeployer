@@ -30,9 +30,15 @@ static class Program
         return invokeAsync;
     }
 
-    static Result UpdateBuildNumber(string version) =>
-        Result.SuccessIf(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TF_BUILD")), string.Empty)
-            .Tap(() => Console.WriteLine($"##vso[build.updatebuildnumber]{version}"));
+    static Result UpdateBuildNumber(string version)
+    {
+        var tfBuild = Environment.GetEnvironmentVariable("TF_BUILD");
+        if (string.IsNullOrWhiteSpace(tfBuild))
+            return Result.Success();
+
+        Console.WriteLine($"##vso[build.updatebuildnumber]{version}");
+        return Result.Success();
+    }
 
     private static CliCommand CreateNugetCommand()
     {
@@ -279,27 +285,72 @@ static class Program
                 .WithVersion(version!);
 
             var projects = ParseSolutionProjects(solution.FullName).ToList();
+            Log.Information("[Discovery] Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
             prefix = string.IsNullOrWhiteSpace(prefix) ? System.IO.Path.GetFileNameWithoutExtension(solution.Name) : prefix;
+            Log.Information("[Discovery] Using prefix: {Prefix}", prefix);
 
             var desktop = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
             var browser = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
             var android = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Android", StringComparison.OrdinalIgnoreCase));
 
+            // Collect candidate prefixes from solution for hints
+            static List<string> ExtractPrefixes(IEnumerable<(string Name, string Path)> projs, string suffix)
+            {
+                var list = new List<string>();
+                foreach (var p in projs)
+                {
+                    if (p.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var baseName = p.Name[..^suffix.Length];
+                        list.Add(baseName);
+                    }
+                }
+                return list.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            var desktopPrefixes = ExtractPrefixes(projects, ".Desktop");
+            var browserPrefixes = ExtractPrefixes(projects, ".Browser");
+            var androidPrefixes = ExtractPrefixes(projects, ".Android");
+
             if (desktop != default)
             {
+                Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
                 if (platformSet.Contains("windows"))
+                {
+                    Log.Information("[Discovery] Adding Windows platform for {Project}", desktop.Path);
                     builder = builder.ForWindows(desktop.Path);
+                }
                 if (platformSet.Contains("linux"))
+                {
+                    Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
                     builder = builder.ForLinux(desktop.Path);
+                }
+            }
+            else
+            {
+                if (desktopPrefixes.Any())
+                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
+                else
+                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
             }
 
             if (browser != default && platformSet.Contains("wasm"))
+            {
+                Log.Information("[Discovery] Found Browser project: {Project}. Adding WebAssembly platform.", browser.Path);
                 builder = builder.ForWebAssembly(browser.Path);
+            }
+            else if (browser == default)
+            {
+                if (browserPrefixes.Any())
+                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", browserPrefixes));
+                else
+                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. No Browser projects found in solution.", prefix);
+            }
 
             if (android != default && platformSet.Contains("android") &&
                 keystoreBase64 != null && keyAlias != null && keyPass != null && storePass != null)
             {
+                Log.Information("[Discovery] Found Android project: {Project}. Android packaging will be configured.", android.Path);
                 // Resolve ApplicationId with priority:
                 // 1) Explicit --app-id
                 // 2) From Android csproj <ApplicationId>
@@ -347,13 +398,43 @@ static class Program
                 };
                 builder = builder.ForAndroid(android.Path, options);
             }
+            else if (android != default && platformSet.Contains("android"))
+            {
+                Log.Warning("[Discovery] Android project found but Android signing options were not provided. Skipping Android packaging.");
+            }
+            else if (android == default)
+            {
+                if (androidPrefixes.Any())
+                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
+                else
+                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
+            }
 
-            var releaseConfig = builder.Build();
+            // Final hint for prefix if nothing matched
+            if (desktop == default && browser == default && android == default)
+            {
+                var hint = desktopPrefixes.FirstOrDefault()
+                           ?? androidPrefixes.FirstOrDefault()
+                           ?? browserPrefixes.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(hint))
+                {
+                    Log.Information("[Discovery] Hint: Try using --prefix {Hint}", hint);
+                }
+            }
+
+            var releaseConfigResult = builder.Build();
+            if (releaseConfigResult.IsFailure)
+            {
+                Log.Error("Failed to build release configuration: {Error}", releaseConfigResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
+
             var repositoryConfig = new GitHubRepositoryConfig(owner!, repository!, token);
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
             context.ExitCode = await deployer
-                .CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, dryRun)
+                .CreateGitHubRelease(releaseConfigResult.Value, repositoryConfig, releaseData, dryRun)
                 .WriteResult();
         });
 
