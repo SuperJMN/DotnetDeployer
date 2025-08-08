@@ -68,7 +68,7 @@ public class Dotnet : IDotnet
                             [
                                 ["version", version],
                                 ["RepositoryCommit", commitInfo.Commit],
-                                ["PackageReleaseNotes", commitInfo.Message]
+                                ["PackageReleaseNotes", QuoteMsBuildPropertyValue(NormalizeReleaseNotes(commitInfo.Message))]
                             ]);
 
                         var finalArguments = string.Join(" ", "pack", projectPath, arguments);
@@ -78,5 +78,18 @@ public class Dotnet : IDotnet
                     }))
             .Map(container => container.ResourcesRecursive())
             .Bind(sources => sources.TryFirst(file => file.Name.EndsWith(".nupkg")).ToResult("Cannot find any NuGet package in the output folder"));
+    }
+
+    private static string NormalizeReleaseNotes(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return string.Empty;
+        var normalized = message.Replace("\r", string.Empty).Replace("\n", "\\n");
+        normalized = normalized.Replace("\"", "'");
+        return normalized;
+    }
+
+    private static string QuoteMsBuildPropertyValue(string value)
+    {
+        return $"\"{value}\"";
     }
 }
