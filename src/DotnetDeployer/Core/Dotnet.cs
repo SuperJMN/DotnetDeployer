@@ -85,6 +85,8 @@ public class Dotnet : IDotnet
         if (string.IsNullOrEmpty(message)) return string.Empty;
         var normalized = message.Replace("\r", string.Empty).Replace("\n", "\\n");
         normalized = normalized.Replace("\"", "'");
+        // Escapar comas para MSBuild usando codificación hexadecimal
+        normalized = normalized.Replace(",", "%2C");
         return normalized;
     }
 
