@@ -193,7 +193,10 @@ static class Program
         var androidKeyAliasOption = new Option<string>("--android-key-alias");
         var androidKeyPassOption = new Option<string>("--android-key-pass");
         var androidStorePassOption = new Option<string>("--android-store-pass");
-        var androidAppVersionOption = new Option<int>("--android-app-version", () => 1);
+        var androidAppVersionOption = new Option<int>("--android-app-version")
+        {
+            Description = "Android ApplicationVersion (integer). If omitted, automatically generated from semantic version"
+        };
         var androidDisplayVersionOption = new Option<string>("--android-app-display-version");
 
         cmd.AddOption(solutionOption);
@@ -289,6 +292,9 @@ static class Program
             var storePass = context.ParseResult.GetValueForOption(androidStorePassOption);
             var androidAppVersion = context.ParseResult.GetValueForOption(androidAppVersionOption);
             var androidDisplayVersion = context.ParseResult.GetValueForOption(androidDisplayVersionOption);
+            
+            // Generate ApplicationVersion from semantic version if not explicitly provided
+            var androidAppVersionExplicit = context.ParseResult.FindResultFor(androidAppVersionOption) != null;
 
             var deployer = Deployer.Instance;
 
@@ -422,13 +428,25 @@ static class Program
 
                 Log.Information("[Resolver] PackageName: {PackageName}; ApplicationId: {ApplicationId}", packageName, resolvedAppId);
 
+                // Generate ApplicationVersion from semantic version if not explicitly provided
+                int resolvedAppVersion = androidAppVersion;
+                if (!androidAppVersionExplicit)
+                {
+                    resolvedAppVersion = GenerateApplicationVersionFromSemVer(version!);
+                    Log.Information("[Android] Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
+                }
+                else
+                {
+                    Log.Information("[Android] Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
+                }
+
                 var keyBytes = Convert.FromBase64String(keystoreBase64);
                 var keystore = ByteSource.FromBytes(keyBytes);
                 var options = new AndroidDeployment.DeploymentOptions
                 {
                     PackageName = packageName!,
                     ApplicationId = resolvedAppId!,
-                    ApplicationVersion = androidAppVersion,
+                    ApplicationVersion = resolvedAppVersion,
                     ApplicationDisplayVersion = androidDisplayVersion ?? version!,
                     AndroidSigningKeyStore = keystore,
                     SigningKeyAlias = keyAlias,
@@ -478,6 +496,92 @@ static class Program
         });
 
         return cmd;
+    }
+
+    /// <summary>
+    /// Generates an integer ApplicationVersion from a semantic version string.
+    /// Uses the formula: (major * 1000000) + (minor * 10000) + (patch * 100) + build
+    /// This allows for versions up to 999.99.99.99
+    /// For example: "1.2.3" => 1020300, "2.0.0-beta.5+42" => 2000042
+    /// </summary>
+    private static int GenerateApplicationVersionFromSemVer(string semverString)
+    {
+        try
+        {
+            // Parse semantic version components
+            var version = ParseSemanticVersion(semverString);
+            
+            // Calculate the integer version code
+            // Maximum values: major=999, minor=99, patch=99, build=99
+            int versionCode = (version.Major * 1000000) + 
+                             (version.Minor * 10000) + 
+                             (version.Patch * 100);
+            
+            // Add build number if available
+            if (version.Build > 0)
+            {
+                versionCode += Math.Min(version.Build, 99);
+            }
+            
+            // Ensure it's within Android's valid range (1 to 2100000000)
+            versionCode = Math.Max(1, Math.Min(versionCode, 2100000000));
+            
+            return versionCode;
+        }
+        catch
+        {
+            // Fallback to a timestamp-based version if parsing fails
+            var now = DateTime.UtcNow;
+            return (now.Year - 2020) * 10000000 + 
+                   now.Month * 100000 + 
+                   now.Day * 1000 + 
+                   now.Hour * 10 + 
+                   (now.Minute / 6); // 0-9 for every 6 minutes
+        }
+    }
+    
+    private static (int Major, int Minor, int Patch, int Build) ParseSemanticVersion(string versionString)
+    {
+        // Remove any pre-release or build metadata (e.g., "-beta.1+42")
+        var plusIndex = versionString.IndexOf('+');
+        var dashIndex = versionString.IndexOf('-');
+        
+        int buildNumber = 0;
+        
+        // Extract build number from metadata if present (e.g., "1.2.3+42")
+        if (plusIndex > 0)
+        {
+            var metadata = versionString.Substring(plusIndex + 1);
+            if (int.TryParse(metadata, out var build))
+            {
+                buildNumber = build;
+            }
+            versionString = versionString.Substring(0, plusIndex);
+        }
+        
+        // Remove pre-release info if present
+        if (dashIndex > 0)
+        {
+            // Try to extract a number from pre-release (e.g., "beta.5" => 5)
+            var prerelease = versionString.Substring(dashIndex + 1);
+            var numbers = System.Text.RegularExpressions.Regex.Matches(prerelease, @"\d+");
+            if (numbers.Count > 0 && int.TryParse(numbers[numbers.Count - 1].Value, out var prereleaseNum))
+            {
+                buildNumber = Math.Max(buildNumber, prereleaseNum);
+            }
+            versionString = versionString.Substring(0, dashIndex);
+        }
+        
+        // Parse the main version numbers
+        var parts = versionString.Split('.');
+        int major = 0, minor = 0, patch = 0;
+        
+        if (parts.Length > 0) int.TryParse(parts[0], out major);
+        if (parts.Length > 1) int.TryParse(parts[1], out minor);
+        if (parts.Length > 2) int.TryParse(parts[2], out patch);
+        if (parts.Length > 3 && buildNumber == 0) int.TryParse(parts[3], out buildNumber);
+        
+        return (major, minor, patch, buildNumber);
     }
 
     private static FileInfo ResolveSolution(FileInfo? provided)
