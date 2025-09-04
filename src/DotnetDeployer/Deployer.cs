@@ -122,6 +122,12 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             });
     }
 
+    // Convenience overload to accept Result<ReleaseConfiguration>
+    public Task<Result> CreateGitHubRelease(Result<ReleaseConfiguration> releaseConfigResult, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
+    {
+        return releaseConfigResult.Bind(rc => CreateGitHubRelease(rc, repositoryConfig, releaseData, dryRun));
+    }
+
     // Instance method to create a new builder with Context
     public ReleaseBuilder CreateRelease()
     {

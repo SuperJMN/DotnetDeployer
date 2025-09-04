@@ -80,14 +80,16 @@ public class Dotnet : IDotnet
             .Bind(sources => sources.TryFirst(file => file.Name.EndsWith(".nupkg")).ToResult("Cannot find any NuGet package in the output folder"));
     }
 
-    private static string NormalizeReleaseNotes(string message)
+    internal static string NormalizeReleaseNotes(string message)
     {
         if (string.IsNullOrEmpty(message)) return string.Empty;
-        var normalized = message.Replace("\r", string.Empty).Replace("\n", "\\n");
+        // Preserve structure: unify newlines and encode them as literal \n to keep intent without breaking CLI parsing
+        var normalized = message.Replace("\r\n", "\n").Replace("\r", "\n");
+        // Replace double quotes to avoid breaking the surrounding quotes used in -p:Property="..."
         normalized = normalized.Replace("\"", "'");
-        // Escapar comas para MSBuild usando codificación hexadecimal
-        normalized = normalized.Replace(",", "%2C");
-        return normalized;
+        // Encode newlines as literal two-character sequence \n
+        normalized = normalized.Replace("\n", "\\n");
+        return normalized.Trim();
     }
 
     private static string QuoteMsBuildPropertyValue(string value)
