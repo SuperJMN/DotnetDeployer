@@ -46,9 +46,14 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             .CombineSequentially()
             ;
 
-        if (packagesResult.IsFailure || !push)
+        if (packagesResult.IsFailure)
         {
-            return packagesResult.Map(_ => Result.Success()).GetValueOrDefault(Result.Success());
+            return Result.Failure(packagesResult.Error);
+        }
+
+        if (!push)
+        {
+            return Result.Success();
         }
 
         return await packagesResult.Value

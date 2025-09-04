@@ -92,8 +92,10 @@ public class Dotnet : IDotnet
         normalized = normalized.Replace("%", "%25");
         normalized = normalized.Replace(";", "%3B");
         normalized = normalized.Replace("=", "%3D");
-        // Encode newlines as literal two-character sequence \n
+        // Encode newlines as literal two-character sequence \\n
         normalized = normalized.Replace("\n", "\\n");
+        // Prevent leading dash after a logical newline from being treated as a switch by MSBuild tokenization
+        normalized = normalized.Replace("\\n- ", "\\n\\- ");
         return normalized.Trim();
     }
 
