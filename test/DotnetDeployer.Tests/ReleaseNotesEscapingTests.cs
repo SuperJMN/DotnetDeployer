@@ -29,6 +29,8 @@ public class ReleaseNotesEscapingTests
         Dotnet.NormalizeReleaseNotes("A=B").Should().Contain("%3D");
         // Double quotes replaced by single quotes
         result.Should().Contain("'and'");
+        // Hyphen at start of a bullet after a newline is escaped to avoid being parsed as a switch
+        Dotnet.NormalizeReleaseNotes("First\n- Bullet").Should().Contain("\\n\\- ");
         result.Should().NotBeNullOrWhiteSpace();
     }
 }
