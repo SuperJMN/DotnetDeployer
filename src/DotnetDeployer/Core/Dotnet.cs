@@ -63,17 +63,23 @@ public class Dotnet : IDotnet
                 Result.Try(() => filesystem.Directory.CreateTempSubdirectory())
                     .Bind(outputDir =>
                     {
+                        var releaseNotes = NormalizeReleaseNotes(commitInfo.Message);
                         var arguments = ArgumentsParser.Parse(
                             [["output", outputDir.FullName]],
                             [
                                 ["version", version],
-                                ["RepositoryCommit", commitInfo.Commit],
-                                ["PackageReleaseNotes", QuoteMsBuildPropertyValue(NormalizeReleaseNotes(commitInfo.Message))]
+                                ["RepositoryCommit", commitInfo.Commit]
                             ]);
 
                         var finalArguments = string.Join(" ", "pack", projectPath, arguments);
 
-                        return Command.Execute("dotnet", finalArguments)
+                        var env = new Dictionary<string, string>
+                        {
+                            // Prefer environment variable to avoid MSBuild CLI parsing issues
+                            ["PackageReleaseNotes"] = releaseNotes
+                        };
+
+                        return Command.Execute("dotnet", finalArguments, null, env)
                             .Map(_ => (IContainer)new DirectoryContainer(outputDir));
                     }))
             .Map(container => container.ResourcesRecursive())
