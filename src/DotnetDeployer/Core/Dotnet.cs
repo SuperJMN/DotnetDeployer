@@ -87,6 +87,11 @@ public class Dotnet : IDotnet
         var normalized = message.Replace("\r\n", "\n").Replace("\r", "\n");
         // Replace double quotes to avoid breaking the surrounding quotes used in -p:Property="..."
         normalized = normalized.Replace("\"", "'");
+        // Escape characters that MSBuild interprets in /p: assignments: '%', ';', '='
+        // Order matters: escape '%' first to avoid re-escaping the percent in %3B and %3D
+        normalized = normalized.Replace("%", "%25");
+        normalized = normalized.Replace(";", "%3B");
+        normalized = normalized.Replace("=", "%3D");
         // Encode newlines as literal two-character sequence \n
         normalized = normalized.Replace("\n", "\\n");
         return normalized.Trim();
