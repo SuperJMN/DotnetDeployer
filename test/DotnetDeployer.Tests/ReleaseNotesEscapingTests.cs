@@ -19,9 +19,14 @@ public class ReleaseNotesEscapingTests
         result.Should().Contain("\\n");
         // No double quotes remain
         result.Should().NotContain("\"");
-        // Commas and semicolons are preserved
+        // Commas are preserved
         result.Should().Contain(",");
-        result.Should().Contain(";");
+        // Semicolons are escaped to %3B for MSBuild /p parsing safety
+        result.Should().Contain("%3B");
+        // Percent signs are escaped to %25
+        result.Should().Contain("%25");
+        // Equals signs are escaped to %3D
+        Dotnet.NormalizeReleaseNotes("A=B").Should().Contain("%3D");
         // Double quotes replaced by single quotes
         result.Should().Contain("'and'");
         result.Should().NotBeNullOrWhiteSpace();
