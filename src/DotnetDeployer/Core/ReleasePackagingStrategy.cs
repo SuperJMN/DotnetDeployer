@@ -1,5 +1,7 @@
 namespace DotnetDeployer.Core;
 
+using DotnetDeployer.Platforms.Wasm;
+
 public class ReleasePackagingStrategy
 {
     private readonly Packager packager;
@@ -92,5 +94,10 @@ public class ReleasePackagingStrategy
         }
 
         return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
+    }
+
+    public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
+    {
+        return packager.CreateWasmSite(projectPath);
     }
 }

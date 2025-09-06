@@ -22,11 +22,13 @@ public class Publisher(Context context)
         Context.Logger.Execute(x => x.Information("Publishing site to pages"));
 
         return GetGitHubUserInfo(apiKey)
-            .Bind(userData =>
-            {
-                var pages = new GitHubPagesDeploymentUsingGit(site, Context, ownerName, repositoryName, apiKey, userData.User, userData.Email);
-                return pages.Publish();
-            });
+            .Bind(userData => GetRepositoryDefaultBranch(ownerName, repositoryName, apiKey)
+                .Bind(defaultBranch =>
+                {
+                    Context.Logger.Execute(x => x.Information("Detected default branch '{Branch}' for {Owner}/{Repo}", defaultBranch, ownerName, repositoryName));
+                    var pages = new GitHubPagesDeploymentUsingGit(site, Context, ownerName, repositoryName, apiKey, userData.User, userData.Email, defaultBranch);
+                    return pages.Publish();
+                }));
     }
     
     private async Task<Result<(string User, string Email)>> GetGitHubUserInfo(string apiKey)
@@ -56,6 +58,30 @@ public class Publisher(Context context)
         catch (Exception ex)
         {
             return Result.Failure<(string name, string email)>($"Error getting GitHub user info: {ex.Message}");
+        }
+    }
+
+    private async Task<Result<string>> GetRepositoryDefaultBranch(string owner, string repository, string apiKey)
+    {
+        try
+        {
+            var httpClient = Context.HttpClientFactory.CreateClient("GitHub");
+            httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Zafiro.Deployment", "1.0"));
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+            var response = await httpClient.GetAsync($"https://api.github.com/repos/{owner}/{repository}");
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(content);
+            var root = document.RootElement;
+            var defaultBranch = root.GetProperty("default_branch").GetString() ?? "main";
+            return Result.Success(defaultBranch);
+        }
+        catch (Exception ex)
+        {
+            // Fallback to common branch names if API fails
+            Context.Logger.Execute(x => x.Warning("Could not get default branch from GitHub API: {Error}. Falling back to 'gh-pages'/'main'/'master' heuristics.", ex.Message));
+            return Result.Success("main");
         }
     }
 }
