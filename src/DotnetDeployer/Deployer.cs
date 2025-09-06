@@ -123,7 +123,35 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
                     return Result.Success();
                 }
 
-                return await CreateGitHubRelease(files.ToList(), repositoryConfig, resolved);
+                // Create GitHub release with collected artifacts
+                var releaseResult = await CreateGitHubRelease(files.ToList(), repositoryConfig, resolved);
+                if (releaseResult.IsFailure)
+                {
+                    return releaseResult;
+                }
+
+                // If WebAssembly was requested, publish the site to GitHub Pages
+                if (releaseConfig.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfig.WebAssemblyConfig != null)
+                {
+                    Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repo}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
+                    var wasmResult = await packagingStrategy.CreateWasmSite(releaseConfig.WebAssemblyConfig.ProjectPath);
+                    if (wasmResult.IsFailure)
+                    {
+Context.Logger.Warn("Failed to create WASM site for GitHub Pages: {Error}", wasmResult.Error);
+                        // Do not fail the whole release if pages deployment fails; return success with warning
+                        return releaseResult;
+                    }
+
+                    var pagesResult = await publisher.PublishToGitHubPages(wasmResult.Value, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
+                    if (pagesResult.IsFailure)
+                    {
+Context.Logger.Warn("GitHub Pages deployment failed: {Error}", pagesResult.Error);
+                        // Keep release success even if pages deployment fails
+                        return releaseResult;
+                    }
+                }
+
+                return releaseResult;
             });
     }
 
