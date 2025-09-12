@@ -639,7 +639,9 @@ static class Program
 
     private static IEnumerable<string> GetSubmodulePaths(FileInfo solution)
     {
-        var current = solution.Directory!;
+        // Start from current working directory instead of solution directory
+        // This makes submodule detection relative to where the command is executed
+        var current = new DirectoryInfo(Environment.CurrentDirectory);
         while (current != null && !Directory.Exists(System.IO.Path.Combine(current.FullName, ".git")))
         {
             current = current.Parent;
@@ -669,7 +671,13 @@ static class Program
         var namePattern = string.IsNullOrWhiteSpace(pattern)
             ? System.IO.Path.GetFileNameWithoutExtension(solution.Name) + "*"
             : pattern;
-        var submodules = GetSubmodulePaths(solution).Select(p => p + System.IO.Path.DirectorySeparatorChar).ToList();
+        var allSubmodules = GetSubmodulePaths(solution).Select(p => p + System.IO.Path.DirectorySeparatorChar).ToList();
+        
+        // Filter out submodules that are parent or equal to current working directory
+        // This allows executing from within a submodule and packaging its projects
+        var currentDir = Environment.CurrentDirectory + System.IO.Path.DirectorySeparatorChar;
+        var submodules = allSubmodules.Where(s => !currentDir.StartsWith(s, StringComparison.OrdinalIgnoreCase)).ToList();
+        
 
         foreach (var (name, path) in ParseSolutionProjects(solution.FullName))
         {
