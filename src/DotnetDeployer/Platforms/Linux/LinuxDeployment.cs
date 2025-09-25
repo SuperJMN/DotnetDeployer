@@ -3,6 +3,7 @@ using DotnetPackaging;
 using DotnetPackaging.AppImage;
 using DotnetPackaging.AppImage.Core;
 using DotnetPackaging.AppImage.Metadata;
+using RuntimeArch = System.Runtime.InteropServices.Architecture;
 
 namespace DotnetDeployer.Platforms.Linux;
 
@@ -16,13 +17,15 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
     public Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
-        IEnumerable<Architecture> supportedArchitectures = 
-        [
-            Architecture.Arm64, 
-            Architecture.X64
-        ];
+        // Prefer building for the current machine's architecture to avoid cross-publish failures
+        var current = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        IEnumerable<Architecture> targetArchitectures = current switch
+        {
+            RuntimeArch.Arm64 => new[] { Architecture.Arm64 },
+            _ => new[] { Architecture.X64 }
+        };
 
-        return supportedArchitectures
+        return targetArchitectures
             .Select(architecture => CreateAppImage(architecture))
             .CombineInOrder();
     }

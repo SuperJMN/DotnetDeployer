@@ -1,5 +1,6 @@
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
+using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Services.GitHub;
 using DotnetPackaging;
 using Zafiro.CSharpFunctionalExtensions;
@@ -165,6 +166,18 @@ Context.Logger.Warn("GitHub Pages deployment failed: {Error}", pagesResult.Error
     public ReleaseBuilder CreateRelease()
     {
         return new ReleaseBuilder(Context);
+    }
+
+    // Expose packaging-only flow (no publishing)
+    public Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(ReleaseConfiguration releaseConfig)
+    {
+        return packagingStrategy.PackageForPlatforms(releaseConfig);
+    }
+
+    // Expose WASM site creation
+    public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
+    {
+        return packagingStrategy.CreateWasmSite(projectPath);
     }
 
     // Convenience method for automatic Avalonia project discovery

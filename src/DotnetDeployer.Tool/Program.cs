@@ -6,6 +6,8 @@ using DotnetDeployer.Platforms.Android;
 using DotnetPackaging;
 using Serilog;
 using Zafiro.DivineBytes;
+using Zafiro.CSharpFunctionalExtensions;
+using Zafiro.Misc;
 using CSharpFunctionalExtensions;
 using CliCommand = System.CommandLine.Command;
 
@@ -22,6 +24,7 @@ static class Program
         var root = new RootCommand("Deployment tool for DotnetPackaging");
         root.AddCommand(CreateNugetCommand());
         root.AddCommand(CreateReleaseCommand());
+        root.AddCommand(CreateExportCommand());
 
         var invokeAsync = await root.InvokeAsync(args);
 
@@ -285,6 +288,37 @@ static class Program
                 Log.Warning("--dry-run is deprecated. Use --no-publish instead.");
             }
             var skipPublish = noPublish || dryRun;
+
+            // Resolve owner/repo and token only if we will publish
+            if (!skipPublish)
+            {
+                if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repository))
+                {
+                    var repoResult = await Git.GetOwnerAndRepository(solution.Directory!, Deployer.Instance.Context.Command);
+                    if (repoResult.IsFailure)
+                    {
+                        Log.Error("Owner and repository must be specified or inferred from the current Git repository: {Error}", repoResult.Error);
+                        return;
+                    }
+
+                    owner ??= repoResult.Value.Owner;
+                    repository ??= repoResult.Value.Repository;
+                }
+
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    Log.Error("GitHub token must be provided with --github-token or GITHUB_TOKEN");
+                    return;
+                }
+            }
+            else
+            {
+                // For no-publish runs, fill placeholders and avoid requiring a token
+                owner ??= "dry-run";
+                repository ??= "dry-run";
+                token = string.Empty;
+            }
+
             var platforms = context.ParseResult.GetValueForOption(platformsOption)!;
             var keystoreBase64 = context.ParseResult.GetValueForOption(androidKeystoreOption);
             var keyAlias = context.ParseResult.GetValueForOption(androidKeyAliasOption);
@@ -298,24 +332,6 @@ static class Program
 
             var deployer = Deployer.Instance;
 
-            if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repository))
-            {
-                var repoResult = await Git.GetOwnerAndRepository(solution.Directory!, deployer.Context.Command);
-                if (repoResult.IsFailure)
-                {
-                    Log.Error("Owner and repository must be specified or inferred from the current Git repository: {Error}", repoResult.Error);
-                    return;
-                }
-
-                owner ??= repoResult.Value.Owner;
-                repository ??= repoResult.Value.Repository;
-            }
-
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                Log.Error("GitHub token must be provided with --github-token or GITHUB_TOKEN");
-                return;
-            }
 
             tag = string.IsNullOrWhiteSpace(tag) ? $"v{version}" : tag;
             releaseName = string.IsNullOrWhiteSpace(releaseName) ? tag : releaseName;
@@ -493,6 +509,331 @@ static class Program
             context.ExitCode = await deployer
                 .CreateGitHubRelease(releaseConfigResult.Value, repositoryConfig, releaseData, skipPublish)
                 .WriteResult();
+        });
+
+        return cmd;
+    }
+
+    private static CliCommand CreateExportCommand()
+    {
+        var cmd = new CliCommand("export", "Build artifacts and write them to a target directory");
+
+        var solutionOption = new Option<FileInfo?>("--solution")
+        {
+            Description = "Solution file. If omitted the tool searches parent directories"
+        };
+        var prefixOption = new Option<string?>("--prefix")
+        {
+            Description = "Prefix used to locate projects inside the solution"
+        };
+        var versionOption = new Option<string?>("--version")
+        {
+            Description = "Artifacts version. If omitted GitVersion is used"
+        };
+        var packageNameOption = new Option<string?>("--package-name")
+        {
+            Description = "Package name. Defaults to the solution name"
+        };
+        var appIdOption = new Option<string?>("--app-id")
+        {
+            Description = "Application identifier. Defaults to the solution name"
+        };
+        var appNameOption = new Option<string?>("--app-name")
+        {
+            Description = "Application name. Defaults to the solution name"
+        };
+
+        var outputOption = new Option<DirectoryInfo>("--output")
+        {
+            Description = "Output directory where artifacts will be written"
+        };
+        var includeWasmOption = new Option<bool>("--include-wasm")
+        {
+            Description = "If set and wasm platform is selected, export the WASM site into a subfolder"
+        };
+
+        var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "wasm" })
+        {
+            AllowMultipleArgumentsPerToken = true,
+            Description = "Platforms to package: windows, linux, android, wasm"
+        };
+
+        var androidKeystoreOption = new Option<string>("--android-keystore-base64");
+        var androidKeyAliasOption = new Option<string>("--android-key-alias");
+        var androidKeyPassOption = new Option<string>("--android-key-pass");
+        var androidStorePassOption = new Option<string>("--android-store-pass");
+        var androidAppVersionOption = new Option<int>("--android-app-version")
+        {
+            Description = "Android ApplicationVersion (integer). If omitted, automatically generated from semantic version"
+        };
+        var androidDisplayVersionOption = new Option<string>("--android-app-display-version");
+
+        cmd.AddOption(solutionOption);
+        cmd.AddOption(prefixOption);
+        cmd.AddOption(versionOption);
+        cmd.AddOption(packageNameOption);
+        cmd.AddOption(appIdOption);
+        cmd.AddOption(appNameOption);
+        cmd.AddOption(outputOption);
+        cmd.AddOption(includeWasmOption);
+        cmd.AddOption(platformsOption);
+        cmd.AddOption(androidKeystoreOption);
+        cmd.AddOption(androidKeyAliasOption);
+        cmd.AddOption(androidKeyPassOption);
+        cmd.AddOption(androidStorePassOption);
+        cmd.AddOption(androidAppVersionOption);
+        cmd.AddOption(androidDisplayVersionOption);
+
+        cmd.SetHandler(async context =>
+        {
+            var solution = ResolveSolution(context.ParseResult.GetValueForOption(solutionOption));
+            var prefix = context.ParseResult.GetValueForOption(prefixOption);
+            var version = context.ParseResult.GetValueForOption(versionOption);
+            var output = context.ParseResult.GetValueForOption(outputOption);
+            if (output == null)
+            {
+                Log.Error("--output is required");
+                context.ExitCode = 1;
+                return;
+            }
+
+            if (!output.Exists)
+            {
+                try { output.Create(); }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to create output directory {Dir}", output.FullName);
+                    context.ExitCode = 1;
+                    return;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                var versionResult = await GitVersionRunner.Run(solution.DirectoryName);
+                if (versionResult.IsFailure)
+                {
+                    Log.Error("Failed to obtain version using GitVersion: {Error}", versionResult.Error);
+                    return;
+                }
+
+                version = versionResult.Value;
+            }
+
+            UpdateBuildNumber(version);
+
+            var packageName = context.ParseResult.GetValueForOption(packageNameOption);
+            var appId = context.ParseResult.GetValueForOption(appIdOption);
+            var appIdExplicit = context.ParseResult.FindResultFor(appIdOption) != null && !string.IsNullOrWhiteSpace(appId);
+            var appName = context.ParseResult.GetValueForOption(appNameOption);
+            // If any of the app metadata is missing, infer sensible defaults from the solution name
+            if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(appId))
+            {
+                var info = GuessApplicationInfo(solution);
+                packageName ??= info.PackageName;
+                appName ??= info.AppName;
+                if (string.IsNullOrWhiteSpace(appId))
+                {
+                    appId = info.AppId;
+                }
+            }
+
+            var includeWasm = context.ParseResult.GetValueForOption(includeWasmOption);
+            var platforms = context.ParseResult.GetValueForOption(platformsOption)!;
+            var keystoreBase64 = context.ParseResult.GetValueForOption(androidKeystoreOption);
+            var keyAlias = context.ParseResult.GetValueForOption(androidKeyAliasOption);
+            var keyPass = context.ParseResult.GetValueForOption(androidKeyPassOption);
+            var storePass = context.ParseResult.GetValueForOption(androidStorePassOption);
+            var androidAppVersion = context.ParseResult.GetValueForOption(androidAppVersionOption);
+            var androidDisplayVersion = context.ParseResult.GetValueForOption(androidDisplayVersionOption);
+            var androidAppVersionExplicit = context.ParseResult.FindResultFor(androidAppVersionOption) != null;
+
+            var deployer = Deployer.Instance;
+
+            var projects = ParseSolutionProjects(solution.FullName).ToList();
+            Log.Information("[Discovery] Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
+
+            prefix = string.IsNullOrWhiteSpace(prefix) ? System.IO.Path.GetFileNameWithoutExtension(solution.Name) : prefix;
+            Log.Information("[Discovery] Using prefix: {Prefix}", prefix);
+
+            var desktop = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
+            var browser = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
+            var android = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Android", StringComparison.OrdinalIgnoreCase));
+
+            static List<string> ExtractPrefixes(IEnumerable<(string Name, string Path)> projs, string suffix)
+            {
+                var list = new List<string>();
+                foreach (var p in projs)
+                {
+                    if (p.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var baseName = p.Name[..^suffix.Length];
+                        list.Add(baseName);
+                    }
+                }
+                return list.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            var desktopPrefixes = ExtractPrefixes(projects, ".Desktop");
+            var browserPrefixes = ExtractPrefixes(projects, ".Browser");
+            var androidPrefixes = ExtractPrefixes(projects, ".Android");
+
+            var platformSet = new HashSet<string>(platforms.Select(p => p.ToLowerInvariant()));
+
+            var builder = deployer.CreateRelease()
+                .WithApplicationInfo(packageName!, appId!, appName!)
+                .WithVersion(version!);
+
+            if (desktop != default)
+            {
+                Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
+                if (platformSet.Contains("windows"))
+                {
+                    Log.Information("[Discovery] Adding Windows platform for {Project}", desktop.Path);
+                    builder = builder.ForWindows(desktop.Path);
+                }
+                if (platformSet.Contains("linux"))
+                {
+                    Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
+                    builder = builder.ForLinux(desktop.Path);
+                }
+            }
+            else
+            {
+                if (desktopPrefixes.Any())
+                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
+                else
+                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
+            }
+
+            if (browser != default && platformSet.Contains("wasm"))
+            {
+                Log.Information("[Discovery] Found Browser project: {Project}. Adding WebAssembly platform.", browser.Path);
+                builder = builder.ForWebAssembly(browser.Path);
+            }
+            else if (browser == default && platformSet.Contains("wasm"))
+            {
+                if (browserPrefixes.Any())
+                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", browserPrefixes));
+                else
+                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. No Browser projects found in solution.", prefix);
+            }
+
+            if (android != default && platformSet.Contains("android") &&
+                keystoreBase64 != null && keyAlias != null && keyPass != null && storePass != null)
+            {
+                Log.Information("[Discovery] Found Android project: {Project}. Android packaging will be configured.", android.Path);
+                string? resolvedAppId = appId;
+
+                if (!appIdExplicit)
+                {
+                    try
+                    {
+                        var doc = XDocument.Load(android.Path);
+                        var appIdElement = doc.Descendants()
+                            .FirstOrDefault(e => e.Name.LocalName.Equals("ApplicationId", StringComparison.OrdinalIgnoreCase));
+                        if (appIdElement != null && !string.IsNullOrWhiteSpace(appIdElement.Value))
+                        {
+                            resolvedAppId = appIdElement.Value.Trim();
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedAppId))
+                {
+                    string Sanitize(string s) => new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+                    var ownerSan = Sanitize("owner");
+                    var pkgSan = Sanitize(packageName!);
+                    resolvedAppId = $"io.{ownerSan}.{pkgSan}";
+                }
+
+                Log.Information("[Resolver] PackageName: {PackageName}; ApplicationId: {ApplicationId}", packageName, resolvedAppId);
+
+                int resolvedAppVersion = androidAppVersion;
+                if (!androidAppVersionExplicit)
+                {
+                    resolvedAppVersion = GenerateApplicationVersionFromSemVer(version!);
+                    Log.Information("[Android] Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
+                }
+                else
+                {
+                    Log.Information("[Android] Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
+                }
+
+                var keyBytes = Convert.FromBase64String(keystoreBase64);
+                var keystore = ByteSource.FromBytes(keyBytes);
+                var options = new AndroidDeployment.DeploymentOptions
+                {
+                    PackageName = packageName!,
+                    ApplicationId = resolvedAppId!,
+                    ApplicationVersion = resolvedAppVersion,
+                    ApplicationDisplayVersion = androidDisplayVersion ?? version!,
+                    AndroidSigningKeyStore = keystore,
+                    SigningKeyAlias = keyAlias,
+                    SigningKeyPass = keyPass,
+                    SigningStorePass = storePass
+                };
+                builder = builder.ForAndroid(android.Path, options);
+            }
+            else if (android != default && platformSet.Contains("android"))
+            {
+                Log.Warning("[Discovery] Android project found but Android signing options were not provided. Skipping Android packaging.");
+            }
+            else if (android == default && platformSet.Contains("android"))
+            {
+                if (androidPrefixes.Any())
+                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
+                else
+                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
+            }
+
+            var releaseConfigResult = builder.Build();
+            if (releaseConfigResult.IsFailure)
+            {
+                Log.Error("Failed to build export configuration: {Error}", releaseConfigResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
+
+            // Build artifacts
+            var artifactsResult = await deployer.BuildArtifacts(releaseConfigResult.Value);
+            if (artifactsResult.IsFailure)
+            {
+                Log.Error("Failed to build artifacts: {Error}", artifactsResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
+
+            // Write artifacts to output directory
+            var writeResult = await artifactsResult.Value
+                .Select(resource => resource.WriteTo(System.IO.Path.Combine(output.FullName, resource.Name)))
+                .CombineSequentially();
+
+            if (writeResult.IsFailure)
+            {
+                Log.Error("Failed to write artifacts: {Error}", writeResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
+
+            // Optionally include WASM site
+            if (includeWasm && releaseConfigResult.Value.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfigResult.Value.WebAssemblyConfig != null)
+            {
+                var wasmResult = await deployer.CreateWasmSite(releaseConfigResult.Value.WebAssemblyConfig.ProjectPath)
+                    .Bind(site => site.Contents.WriteTo(System.IO.Path.Combine(output.FullName, "wasm")));
+                if (wasmResult.IsFailure)
+                {
+                    Log.Error("Failed to export WASM site: {Error}", wasmResult.Error);
+                    context.ExitCode = 1;
+                    return;
+                }
+            }
+
+            Log.Information("Artifacts exported successfully to {Dir}", output.FullName);
+            context.ExitCode = 0;
         });
 
         return cmd;

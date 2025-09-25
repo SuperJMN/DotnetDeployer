@@ -52,9 +52,31 @@ Ejemplos:
 ### Uso del comando "release" del CLI
 Crea artefactos por plataforma (Windows, Linux, Android, WebAssembly) y, opcionalmente, una release en GitHub con subida de assets.
 
+### Uso del comando "export" del CLI
+Genera los artefactos por plataforma y los escribe en una carpeta indicada, sin publicar nada.
+
+- Descubre proyectos en la solución igual que "release" y acepta las mismas opciones de plataformas y Android.
+- Directorio de salida: requerido con --output.
+- WASM: por defecto no exporta el sitio; puedes incluirlo con --include-wasm (se escribirá en un subdirectorio "wasm").
+
+Ejemplo:
+- dotnet run --project src/DotnetDeployer.Tool -- export \
+    --solution /abs/path/YourApp.sln \
+    --version 1.2.3 \
+    --package-name YourApp \
+    --app-id com.example.yourapp \
+    --app-name "Your App" \
+    --platform windows linux android wasm \
+    --android-keystore-base64 "$ANDROID_KEYSTORE_BASE64" \
+    --android-key-alias {{ANDROID_KEY_ALIAS}} \
+    --android-key-pass {{ANDROID_KEY_PASS}} \
+    --android-store-pass {{ANDROID_STORE_PASS}} \
+    --include-wasm \
+    --output /path/to/out
+
 - Autodescubre proyectos en la solución según sufijos: .Desktop (Windows/Linux), .Browser (WASM), .Android (Android). Puedes guiar con --prefix.
 - Token GitHub: --github-token o env var GITHUB_TOKEN. Owner/repo inferidos de "git remote origin" si no se pasan --owner y --repository.
-- --no-publish genera artefactos sin crear la release (alias deprecado: --dry-run).
+- --no-publish genera artefactos sin crear la release (alias deprecado: --dry-run). Con --no-publish no se requiere token de GitHub ni owner/repository.
 - Android: requiere firma. Pasa el keystore en Base64 y credenciales; si no das --android-app-version, se deriva de la semver.
 
 Ejemplo completo (Windows+Linux+Android+WASM) sin publicar aún:
