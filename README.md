@@ -122,6 +122,52 @@ Examples:
 
 ---
 
+## Command: export
+Build artifacts for selected platforms and write them to a target directory without publishing anything.
+
+Behavior and discovery mirror the release command:
+- Project discovery by suffix: `.Desktop` (Windows/Linux), `.Browser` (WASM), `.Android` (Android).
+- Use `--prefix` to guide discovery when your solution contains multiple app roots.
+
+Key options:
+- `--solution` Solution file. If omitted, the tool searches parent directories.
+- `--prefix` Prefix for discovery. Defaults to the solution name.
+- `--version` Artifacts version. If omitted, GitVersion is used (fallback to `git describe`).
+- `--package-name`, `--app-id`, `--app-name` App metadata. If omitted, inferred from the solution name.
+- `--platform` One or more of: `windows`, `linux`, `android`, `wasm`.
+- `--output` Output directory where artifacts will be written. Required.
+- `--include-wasm` If set and `wasm` is included in `--platform`, writes the WASM site contents into a `wasm` subfolder.
+
+Android options:
+- `--android-keystore-base64`, `--android-key-alias`, `--android-key-pass`, `--android-store-pass` Signing credentials.
+- `--android-app-version` Integer ApplicationVersion (auto-generated from semver if omitted).
+- `--android-app-display-version` Display string for version name (defaults to `--version`).
+
+Notes:
+- No GitHub token is needed for export.
+- For Linux packaging, the tool builds for the current machine architecture by default (e.g., linux-x64 on x64 hosts).
+
+Examples:
+- Export Windows + Linux:
+  - `dotnet run --project src/DotnetDeployer.Tool -- export --solution /abs/path/YourApp.sln --version 1.2.3 --platform windows linux --output /abs/path/out`
+- Export Android (requires signing):
+  - `export ANDROID_KEYSTORE_BASE64={{ANDROID_KEYSTORE_B64}}`
+  - `dotnet run --project src/DotnetDeployer.Tool -- export \`
+    `--solution /abs/path/YourApp.sln \`
+    `--version 1.2.3 \`
+    `--package-name YourApp \`
+    `--app-id com.example.yourapp \`
+    `--platform android \`
+    `--android-keystore-base64 "$ANDROID_KEYSTORE_BASE64" \`
+    `--android-key-alias {{ANDROID_KEY_ALIAS}} \`
+    `--android-key-pass {{ANDROID_KEY_PASS}} \`
+    `--android-store-pass {{ANDROID_STORE_PASS}} \`
+    `--output /abs/path/out`
+- Export Linux + WASM, including site:
+  - `dotnet run --project src/DotnetDeployer.Tool -- export --solution /abs/path/YourApp.sln --version 1.2.3 --platform linux wasm --include-wasm --output /abs/path/out`
+
+---
+
 ## WebAssembly to GitHub Pages: separate repository (Planned)
 Some teams prefer hosting the WASM site in a different repository than the one used for releases. The planned enhancement will allow specifying a separate Pages repository for WebAssembly.
 
