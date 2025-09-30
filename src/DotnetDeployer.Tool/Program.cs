@@ -154,8 +154,10 @@ static class Program
             Description = "Application name. Defaults to the solution name"
         };
 
-        var ownerOption = new Option<string?>("--owner", "GitHub owner. Defaults to the current repository's owner");
-        var repoOption = new Option<string?>("--repository", "GitHub repository name. Defaults to the current repository");
+        var ownerOption = new Option<string?>("--owner", "GitHub owner used for binary release packages (exe, AppImage, apk...). Defaults to the current repository's owner");
+        var repoOption = new Option<string?>("--repository", "GitHub repository name used for binary release packages (exe, AppImage, apk...). Defaults to the current repository");
+        var githubPagesOwnerOption = new Option<string?>("--github-pages-owner", "GitHub Pages owner used for WebAssembly deployments");
+        var githubPagesRepoOption = new Option<string?>("--github-pages-repository", "GitHub Pages repository name used for WebAssembly deployments");
         // Preferred option name
         var githubTokenOption = new Option<string>("--github-token", () => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty)
         {
@@ -219,6 +221,8 @@ static class Program
         cmd.AddOption(prereleaseOption);
         cmd.AddOption(noPublishOption);
         cmd.AddOption(dryRunOption);
+        cmd.AddOption(githubPagesOwnerOption);
+        cmd.AddOption(githubPagesRepoOption);
         cmd.AddOption(platformsOption);
         cmd.AddOption(androidKeystoreOption);
         cmd.AddOption(androidKeyAliasOption);
@@ -266,6 +270,8 @@ static class Program
 
             var owner = context.ParseResult.GetValueForOption(ownerOption);
             var repository = context.ParseResult.GetValueForOption(repoOption);
+            var githubPagesOwner = context.ParseResult.GetValueForOption(githubPagesOwnerOption);
+            var githubPagesRepository = context.ParseResult.GetValueForOption(githubPagesRepoOption);
             var githubToken = context.ParseResult.GetValueForOption(githubTokenOption) ?? string.Empty;
             var legacyToken = context.ParseResult.GetValueForOption(tokenOption) ?? string.Empty;
             var legacyTokenSpecified = context.ParseResult.FindResultFor(tokenOption) != null && !string.IsNullOrWhiteSpace(legacyToken);
@@ -503,11 +509,27 @@ static class Program
                 return;
             }
 
+            var releaseConfig = releaseConfigResult.Value;
+
+            GitHubRepositoryConfig? pagesRepositoryConfig = null;
+            var hasWasm = releaseConfig.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfig.WebAssemblyConfig != null;
+            if (!skipPublish && hasWasm)
+            {
+                if (string.IsNullOrWhiteSpace(githubPagesOwner) || string.IsNullOrWhiteSpace(githubPagesRepository))
+                {
+                    Log.Warning("[WASM] GitHub Pages owner and repository must be provided via --github-pages-owner and --github-pages-repository. Skipping WebAssembly deployment.");
+                }
+                else
+                {
+                    pagesRepositoryConfig = new GitHubRepositoryConfig(githubPagesOwner!, githubPagesRepository!, token);
+                }
+            }
+
             var repositoryConfig = new GitHubRepositoryConfig(owner!, repository!, token);
             var releaseData = new ReleaseData(releaseName, tag, body, draft, prerelease);
 
             context.ExitCode = await deployer
-                .CreateGitHubRelease(releaseConfigResult.Value, repositoryConfig, releaseData, skipPublish)
+                .CreateGitHubRelease(releaseConfig, repositoryConfig, releaseData, skipPublish, pagesRepositoryConfig)
                 .WriteResult();
         });
 

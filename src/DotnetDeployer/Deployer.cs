@@ -102,7 +102,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // New builder-based method for creating releases
-    public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
+    public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false, GitHubRepositoryConfig? pagesRepositoryConfig = null)
     {
         var resolved = releaseData.ReplaceVersion(releaseConfig.Version);
         return packagingStrategy.PackageForPlatforms(releaseConfig)
@@ -134,7 +134,13 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
                 // If WebAssembly was requested, publish the site to GitHub Pages
                 if (releaseConfig.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfig.WebAssemblyConfig != null)
                 {
-                    Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repo}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
+                    if (pagesRepositoryConfig == null)
+                    {
+                        Context.Logger.Warn("GitHub Pages owner and repository are required to publish the WebAssembly site. Skipping GitHub Pages deployment.");
+                        return releaseResult;
+                    }
+
+                    Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repo}", pagesRepositoryConfig.OwnerName, pagesRepositoryConfig.RepositoryName);
                     var wasmResult = await packagingStrategy.CreateWasmSite(releaseConfig.WebAssemblyConfig.ProjectPath);
                     if (wasmResult.IsFailure)
                     {
@@ -143,7 +149,7 @@ Context.Logger.Warn("Failed to create WASM site for GitHub Pages: {Error}", wasm
                         return releaseResult;
                     }
 
-                    var pagesResult = await publisher.PublishToGitHubPages(wasmResult.Value, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
+                    var pagesResult = await publisher.PublishToGitHubPages(wasmResult.Value, pagesRepositoryConfig.OwnerName, pagesRepositoryConfig.RepositoryName, pagesRepositoryConfig.ApiKey);
                     if (pagesResult.IsFailure)
                     {
 Context.Logger.Warn("GitHub Pages deployment failed: {Error}", pagesResult.Error);
@@ -157,9 +163,9 @@ Context.Logger.Warn("GitHub Pages deployment failed: {Error}", pagesResult.Error
     }
 
     // Convenience overload to accept Result<ReleaseConfiguration>
-    public Task<Result> CreateGitHubRelease(Result<ReleaseConfiguration> releaseConfigResult, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
+    public Task<Result> CreateGitHubRelease(Result<ReleaseConfiguration> releaseConfigResult, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false, GitHubRepositoryConfig? pagesRepositoryConfig = null)
     {
-        return releaseConfigResult.Bind(rc => CreateGitHubRelease(rc, repositoryConfig, releaseData, dryRun));
+        return releaseConfigResult.Bind(rc => CreateGitHubRelease(rc, repositoryConfig, releaseData, dryRun, pagesRepositoryConfig));
     }
 
     // Instance method to create a new builder with Context
