@@ -8,6 +8,7 @@ using Zafiro.DivineBytes;
 using Zafiro.CSharpFunctionalExtensions;
 using CSharpFunctionalExtensions;
 using CliCommand = System.CommandLine.Command;
+using ZafiroCommand = Zafiro.Commands.Command;
 
 namespace DotnetDeployer.Tool;
 
@@ -82,6 +83,13 @@ static class Program
         {
             var projects = ctx.ParseResult.GetValueForOption(projectsOption) ?? Enumerable.Empty<FileInfo>();
             var solution = ResolveSolution(ctx.ParseResult.GetValueForOption(solutionOption));
+            var restoreResult = await EnsureWorkloadsRestored(solution);
+            if (restoreResult.IsFailure)
+            {
+                Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
+                ctx.ExitCode = 1;
+                return;
+            }
             var version = ctx.ParseResult.GetValueForOption(versionOption);
             if (string.IsNullOrWhiteSpace(version))
             {
@@ -238,6 +246,13 @@ static class Program
         cmd.SetHandler(async context =>
         {
             var solution = ResolveSolution(context.ParseResult.GetValueForOption(solutionOption));
+            var restoreResult = await EnsureWorkloadsRestored(solution);
+            if (restoreResult.IsFailure)
+            {
+                Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
             var prefix = context.ParseResult.GetValueForOption(prefixOption);
             var version = context.ParseResult.GetValueForOption(versionOption);
             if (string.IsNullOrWhiteSpace(version))
@@ -628,6 +643,13 @@ static class Program
         cmd.SetHandler(async context =>
         {
             var solution = ResolveSolution(context.ParseResult.GetValueForOption(solutionOption));
+            var restoreResult = await EnsureWorkloadsRestored(solution);
+            if (restoreResult.IsFailure)
+            {
+                Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
+                context.ExitCode = 1;
+                return;
+            }
             var prefix = context.ParseResult.GetValueForOption(prefixOption);
             var version = context.ParseResult.GetValueForOption(versionOption);
             var output = context.ParseResult.GetValueForOption(outputOption);
@@ -1001,6 +1023,27 @@ static class Program
         if (parts.Length > 3 && buildNumber == 0) int.TryParse(parts[3], out buildNumber);
         
         return (major, minor, patch, buildNumber);
+    }
+
+    private static async Task<Result> EnsureWorkloadsRestored(FileInfo solution)
+    {
+        var workingDirectory = solution.DirectoryName ?? Environment.CurrentDirectory;
+        Log.Information("Ensuring workloads are restored for solution {Solution}", solution.FullName);
+
+        var logger = Maybe<ILogger>.From(Log.Logger);
+        var command = new ZafiroCommand(logger);
+
+        var arguments = $"workload restore \"{solution.FullName}\"";
+        var result = await command.Execute("dotnet", arguments, workingDirectory);
+        if (result.IsFailure)
+        {
+            var message = string.IsNullOrWhiteSpace(result.Error)
+                ? "dotnet workload restore failed"
+                : result.Error;
+            return Result.Failure(message);
+        }
+
+        return Result.Success();
     }
 
     private static FileInfo ResolveSolution(FileInfo? provided)
