@@ -1,9 +1,8 @@
 using System.IO;
 using DotnetPackaging;
+using Zafiro.Commands;
 
 namespace DotnetDeployer.Core;
-
-public record CommitInfo(string Commit, string Message);
 
 public static class GitInfo
 {
