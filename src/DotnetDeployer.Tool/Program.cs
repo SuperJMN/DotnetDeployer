@@ -3,11 +3,9 @@ using System.CommandLine.Invocation;
 using System.Xml.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
-using DotnetPackaging;
 using Serilog;
 using Zafiro.DivineBytes;
 using Zafiro.CSharpFunctionalExtensions;
-using Zafiro.Misc;
 using CSharpFunctionalExtensions;
 using CliCommand = System.CommandLine.Command;
 

@@ -1,4 +1,5 @@
 using DotnetPackaging;
+using Zafiro.Commands;
 
 namespace DotnetDeployer.Core;
 

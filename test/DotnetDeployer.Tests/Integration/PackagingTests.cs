@@ -1,15 +1,14 @@
-using DotnetDeployer;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Windows;
-using DotnetPackaging;
 using DotnetPackaging.AppImage.Metadata;
 using FluentAssertions;
 using Xunit.Abstractions;
+using Zafiro.Commands;
 using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.Misc;
 
-namespace DotnetPackaging.Deployment.Tests.Integration;
+namespace DotnetDeployer.Tests.Integration;
 
 public class PackagingTests(ITestOutputHelper outputHelper)
 {
