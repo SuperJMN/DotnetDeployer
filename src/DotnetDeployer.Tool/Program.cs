@@ -201,6 +201,11 @@ static class Program
             Description = "Android ApplicationVersion (integer). If omitted, automatically generated from semantic version"
         };
         var androidDisplayVersionOption = new Option<string>("--android-app-display-version");
+        var androidPackageFormatOption = new Option<string>("--android-package-format", () => ".apk")
+        {
+            Description = "Android package format to produce (.apk or .aab). Defaults to .apk."
+        };
+        androidPackageFormatOption.AddCompletions(".apk", ".aab");
 
         cmd.AddOption(solutionOption);
         cmd.AddOption(prefixOption);
@@ -228,6 +233,7 @@ static class Program
         cmd.AddOption(androidStorePassOption);
         cmd.AddOption(androidAppVersionOption);
         cmd.AddOption(androidDisplayVersionOption);
+        cmd.AddOption(androidPackageFormatOption);
 
         cmd.SetHandler(async context =>
         {
@@ -264,6 +270,14 @@ static class Program
                 {
                     appId = info.AppId; // placeholder for non-Android uses; Android resolver may override it later
                 }
+            }
+
+            var androidPackageFormatValue = context.ParseResult.GetValueForOption(androidPackageFormatOption);
+            if (!TryParseAndroidPackageFormat(androidPackageFormatValue, out var androidPackageFormat))
+            {
+                Log.Error("Invalid value '{Value}' for --android-package-format. Supported values: .apk, .aab.", androidPackageFormatValue);
+                context.ExitCode = 1;
+                return;
             }
 
             var owner = context.ParseResult.GetValueForOption(ownerOption);
@@ -471,7 +485,8 @@ static class Program
                     AndroidSigningKeyStore = keystore,
                     SigningKeyAlias = keyAlias,
                     SigningKeyPass = keyPass,
-                    SigningStorePass = storePass
+                    SigningStorePass = storePass,
+                    PackageFormat = androidPackageFormat
                 };
                 builder = builder.ForAndroid(android.Path, options);
             }
@@ -587,6 +602,11 @@ static class Program
             Description = "Android ApplicationVersion (integer). If omitted, automatically generated from semantic version"
         };
         var androidDisplayVersionOption = new Option<string>("--android-app-display-version");
+        var androidPackageFormatOption = new Option<string>("--android-package-format", () => ".apk")
+        {
+            Description = "Android package format to produce (.apk or .aab). Defaults to .apk."
+        };
+        androidPackageFormatOption.AddCompletions(".apk", ".aab");
 
         cmd.AddOption(solutionOption);
         cmd.AddOption(prefixOption);
@@ -603,6 +623,7 @@ static class Program
         cmd.AddOption(androidStorePassOption);
         cmd.AddOption(androidAppVersionOption);
         cmd.AddOption(androidDisplayVersionOption);
+        cmd.AddOption(androidPackageFormatOption);
 
         cmd.SetHandler(async context =>
         {
@@ -656,6 +677,14 @@ static class Program
                 {
                     appId = info.AppId;
                 }
+            }
+
+            var androidPackageFormatValue = context.ParseResult.GetValueForOption(androidPackageFormatOption);
+            if (!TryParseAndroidPackageFormat(androidPackageFormatValue, out var androidPackageFormat))
+            {
+                Log.Error("Invalid value '{Value}' for --android-package-format. Supported values: .apk, .aab.", androidPackageFormatValue);
+                context.ExitCode = 1;
+                return;
             }
 
             var includeWasm = context.ParseResult.GetValueForOption(includeWasmOption);
@@ -794,7 +823,8 @@ static class Program
                     AndroidSigningKeyStore = keystore,
                     SigningKeyAlias = keyAlias,
                     SigningKeyPass = keyPass,
-                    SigningStorePass = storePass
+                    SigningStorePass = storePass,
+                    PackageFormat = androidPackageFormat
                 };
                 builder = builder.ForAndroid(android.Path, options);
             }
@@ -857,6 +887,34 @@ static class Program
         });
 
         return cmd;
+    }
+
+    private static bool TryParseAndroidPackageFormat(string? value, out AndroidPackageFormat format)
+    {
+        format = AndroidPackageFormat.Apk;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var normalized = value.Trim();
+
+        if (normalized.Equals(".apk", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("apk", StringComparison.OrdinalIgnoreCase))
+        {
+            format = AndroidPackageFormat.Apk;
+            return true;
+        }
+
+        if (normalized.Equals(".aab", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Equals("aab", StringComparison.OrdinalIgnoreCase))
+        {
+            format = AndroidPackageFormat.Aab;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

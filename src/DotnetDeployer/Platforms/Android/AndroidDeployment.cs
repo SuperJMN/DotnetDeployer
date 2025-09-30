@@ -15,7 +15,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             .Bind(async tempKeystore =>
             {
                 var sdk = new AndroidSdk(logger);
-                
+
                 var androidSdkPathResult = options.AndroidSdkPath
                     .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
                 
@@ -26,7 +26,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                         {
                             var args = CreateArgs(options, tempKeystore.FilePath, androidSdkPath);
                             var publishResult = await dotnet.Publish(projectPath, args);
-                            return publishResult.Map(ApkFiles);
+                            return publishResult.Map(AndroidPackages);
                         });
                 }
             });
@@ -47,23 +47,27 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         });
     }
 
-    private IEnumerable<INamedByteSource> ApkFiles(IContainer directory)
+    private IEnumerable<INamedByteSource> AndroidPackages(IContainer directory)
     {
-        var allApks = directory.ResourcesWithPathsRecursive()
-            .Where(file => file.Name.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+
+        var extension = options.PackageFormat.FileExtension();
+        var requiresSignedSuffix = options.PackageFormat.RequiresSignedSuffix();
+
+        var allPackages = directory.ResourcesWithPathsRecursive()
+            .Where(file => file.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         // Log all discovered APKs
         logger.Execute(log =>
         {
-            if (allApks.Count == 0)
+            if (allPackages.Count == 0)
             {
-                log.Information("No APK files found in publish output.");
+                log.Information("No {Extension} files found in publish output.", extension);
             }
             else
             {
-                log.Information("Discovered {Count} APK file(s):", allApks.Count);
-                foreach (var apk in allApks)
+                log.Information("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
+                foreach (var apk in allPackages)
                 {
                     log.Information(" - {Apk}", apk.Name);
                 }
@@ -71,39 +75,49 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         });
 
         // Select only APKs that match the desired criteria: contain ApplicationId and are signed
-        var selectedApks = allApks
+        var selectedPackages = allPackages
             .Where(res =>
             {
                 var fileName = global::System.IO.Path.GetFileName(res.Name);
-                return fileName.Contains(options.ApplicationId, StringComparison.OrdinalIgnoreCase)
-                       && fileName.EndsWith("-Signed.apk", StringComparison.OrdinalIgnoreCase);
+                if (!fileName.Contains(options.ApplicationId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (!requiresSignedSuffix)
+                {
+                    return true;
+                }
+
+                var signedSuffix = $"-Signed{extension}";
+                return fileName.EndsWith(signedSuffix, StringComparison.OrdinalIgnoreCase);
             })
             .ToList();
 
         logger.Execute(log =>
         {
-            log.Information("Selected {Count} APK file(s) matching ApplicationId and signed suffix:", selectedApks.Count);
-            foreach (var apk in selectedApks)
+            log.Information("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
+            foreach (var apk in selectedPackages)
             {
                 log.Information(" * {Apk}", apk.Name);
             }
 
-            if (selectedApks.Count == 0)
+            if (selectedPackages.Count == 0)
             {
-                log.Warning("No signed APKs found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
+                log.Warning("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
             }
         });
 
         // Rename selected APKs to the desired final naming convention
-        var renamed = selectedApks
+        var renamed = selectedPackages
             .Select(resource =>
             {
                 var originalName = global::System.IO.Path.GetFileNameWithoutExtension(resource.Name);
                 var dashIndex = originalName.LastIndexOf('-');
                 var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
-                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}.apk";
+                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}{extension}";
                 
-                logger.Information("Renaming APK '{OriginalName}' to '{FinalName}'", originalName, finalName);
+                logger.Information("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName);
                 return (INamedByteSource)new Resource(finalName, resource);
             })
             .GroupBy(res => res.Name)
@@ -126,7 +140,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             new[] { "AndroidSdkDirectory", androidSdkPath },
             new[] { "AndroidSignV1", "true" },
             new[] { "AndroidSignV2", "true" },
-            new[] { "AndroidPackageFormats", "apk" },
+            new[] { "AndroidPackageFormats", deploymentOptions.PackageFormat.ToMsBuildValue() },
         };
 
         return ArgumentsParser.Parse([["configuration", "Release"]], properties);
@@ -145,5 +159,6 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         public required string SigningStorePass { get; init; }
         public required string SigningKeyPass { get; init; }
         public Maybe<Path> AndroidSdkPath { get; set; } = Maybe<Path>.None;
+        public AndroidPackageFormat PackageFormat { get; init; } = AndroidPackageFormat.Apk;
     }
 }
