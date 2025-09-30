@@ -66,13 +66,17 @@ Examples:
 
 ---
 
-## Command: release
+## Command group: github
+Use the `github` command group to publish packaged artifacts or WebAssembly sites through GitHub. Binary releases and GitHub Pages deployments now live in separate subcommands.
+
+### Subcommand: release
 Create artifacts per platform and optionally publish a GitHub release with uploaded assets.
 
 Platform discovery rules (by project suffix):
 - `.Desktop` => Windows and/or Linux (self-contained executables)
-- `.Browser` => WebAssembly (WASM) site
-- `.Android` => Signed Android APKs
+- `.Android` => Signed Android packages (`.apk` or `.aab`)
+
+> Need WebAssembly? Run `dotnet run --project src/DotnetDeployer.Tool -- github pages ...` instead of adding `wasm` here.
 
 General options:
 - `--solution` Solution file. If omitted, the tool searches parent directories.
@@ -83,29 +87,24 @@ General options:
 - `--github-token` GitHub token (or `--token` deprecated alias). Can be provided via `GITHUB_TOKEN` env var.
 - `--release-name`, `--tag`, `--body`, `--draft`, `--prerelease` Standard GitHub release metadata.
 - `--no-publish` Build/package artifacts but do not publish a GitHub release (preferred over deprecated `--dry-run`).
-- `--platform` One or more of: `windows`, `linux`, `android`, `wasm`.
+- `--platform` One or more of: `windows`, `linux`, `android`. Passing other values fails with guidance to use the appropriate command.
 
 Android options:
 - `--android-keystore-base64`, `--android-key-alias`, `--android-key-pass`, `--android-store-pass` Signing credentials.
 - `--android-app-version` Integer ApplicationVersion. If omitted, generated from semantic version.
 - `--android-app-display-version` Display string for version name (defaults to `--version`).
 
-WebAssembly (current behavior):
-- If WebAssembly is requested and discovered, the tool generates the site (wwwroot) and attempts to deploy it to GitHub Pages in the same repository used for the release.
-- The default branch for the Pages repository is detected via the GitHub API. If detection fails, a safe default is used (currently `main`).
-- If Pages deployment fails, the GitHub release creation still succeeds; a warning is logged.
-
 Examples:
-- Full example (Windows + Linux + Android + WASM) without publishing yet:
+- Multi-platform (Windows + Linux + Android) without publishing yet:
   - `export GITHUB_TOKEN={{GITHUB_TOKEN}}`
   - `export ANDROID_KEYSTORE_BASE64={{ANDROID_KEYSTORE_B64}}`
-  - `dotnet run --project src/DotnetDeployer.Tool -- release \`
+  - `dotnet run --project src/DotnetDeployer.Tool -- github release \`
     `--solution /abs/path/YourApp.sln \`
     `--version 1.2.3 \`
     `--package-name YourApp \`
     `--app-id com.example.yourapp \`
     `--app-name "Your App" \`
-    `--platform windows linux android wasm \`
+    `--platform windows linux android \`
     `--android-keystore-base64 "$ANDROID_KEYSTORE_BASE64" \`
     `--android-key-alias {{ANDROID_KEY_ALIAS}} \`
     `--android-key-pass {{ANDROID_KEY_PASS}} \`
@@ -114,11 +113,33 @@ Examples:
 
 - Publish for Windows and Linux only (auto-discovery with default prefix):
   - `export GITHUB_TOKEN={{GITHUB_TOKEN}}`
-  - `dotnet run --project src/DotnetDeployer.Tool -- release --solution /abs/path/YourApp.sln --version 1.2.3 --platform windows linux`
+  - `dotnet run --project src/DotnetDeployer.Tool -- github release --solution /abs/path/YourApp.sln --version 1.2.3 --platform windows linux`
 
 - Create artifacts but skip release publication:
   - `export GITHUB_TOKEN={{GITHUB_TOKEN}}`
-  - `dotnet run --project src/DotnetDeployer.Tool -- release --solution /abs/path/YourApp.sln --version 1.2.3 --no-publish`
+  - `dotnet run --project src/DotnetDeployer.Tool -- github release --solution /abs/path/YourApp.sln --version 1.2.3 --no-publish`
+
+### Subcommand: pages
+Publish the WebAssembly site produced by the `.Browser` project to GitHub Pages. The command builds the WASM site and, unless `--no-publish` is specified, pushes it to the target repository.
+
+Project discovery rules (by project suffix):
+- `.Browser` => WebAssembly site (wwwroot contents)
+
+General options:
+- `--solution` Solution file. If omitted, the tool searches parent directories.
+- `--prefix` Prefix to narrow project discovery inside the solution. Defaults to the solution name.
+- `--version` Deployment version. If omitted, GitVersion is used (fallback to `git describe`).
+- `--owner`, `--repository` GitHub owner and repository. If omitted, inferred from the current git remote (origin).
+- `--github-token` GitHub token (or `--token` deprecated alias). Can be provided via `GITHUB_TOKEN` env var.
+- `--no-publish` Build the WebAssembly site but do not push to GitHub Pages (preferred over deprecated `--dry-run`).
+
+Examples:
+- Publish the Browser project to GitHub Pages:
+  - `export GITHUB_TOKEN={{GITHUB_TOKEN}}`
+  - `dotnet run --project src/DotnetDeployer.Tool -- github pages --solution /abs/path/YourApp.sln --version 1.2.3`
+
+- Build the site without publishing (useful for validation in CI):
+  - `dotnet run --project src/DotnetDeployer.Tool -- github pages --solution /abs/path/YourApp.sln --version 1.2.3 --no-publish`
 
 ---
 
@@ -186,23 +207,18 @@ var result = await deployer.CreateRelease()
 ```
 
 Proposed CLI flags (subject to change):
-- `--wasm-project PATH`
-- `--wasm-pages-owner OWNER`
-- `--wasm-pages-repository REPO`
-- `--wasm-pages-branch BRANCH` (optional)
+- `--pages-owner OWNER`
+- `--pages-repository REPO`
+- `--pages-branch BRANCH` (optional)
 
 Example (planned):
 - `export GITHUB_TOKEN={{GITHUB_TOKEN}}`
-- `dotnet run --project src/DotnetDeployer.Tool -- release \`
+- `dotnet run --project src/DotnetDeployer.Tool -- github pages \`
   `--solution /abs/path/YourApp.sln \`
   `--version 1.2.3 \`
-  `--package-name YourApp \`
-  `--platform windows linux wasm \`
-  `--owner acme --repository yourapp \`
-  `--wasm-project src/YourApp.Browser/YourApp.Browser.csproj \`
-  `--wasm-pages-owner acme \`
-  `--wasm-pages-repository yourapp-pages \`
-  `--wasm-pages-branch gh-pages`
+  `--pages-owner acme \`
+  `--pages-repository yourapp-pages \`
+  `--pages-branch gh-pages`
 
 Branch resolution when omitted (planned):
 - Attempt to detect the repository default branch via the GitHub API.
@@ -228,4 +244,3 @@ Branch resolution when omitted (planned):
 ---
 
 © DotnetDeployer contributors.
-
