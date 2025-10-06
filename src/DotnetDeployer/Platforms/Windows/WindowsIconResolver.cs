@@ -374,9 +374,16 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
 
     private Maybe<IconReference> InterpretResourceReference(string value)
     {
-        if (value.StartsWith("avares://", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(value))
         {
-            var remaining = value.Substring("avares://".Length);
+            return Maybe<IconReference>.None;
+        }
+
+        var trimmed = value.Trim();
+
+        if (trimmed.StartsWith("avares://", StringComparison.OrdinalIgnoreCase))
+        {
+            var remaining = trimmed.Substring("avares://".Length);
             var slashIndex = remaining.IndexOf('/') + 1;
             if (slashIndex <= 0 || slashIndex >= remaining.Length)
             {
@@ -387,9 +394,9 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
             return Maybe<IconReference>.From(new IconReference(relative.Replace('/', IOPath.DirectorySeparatorChar), false));
         }
 
-        if (value.StartsWith("resm:", StringComparison.OrdinalIgnoreCase))
+        if (trimmed.StartsWith("resm:", StringComparison.OrdinalIgnoreCase))
         {
-            var resource = value.Substring("resm:".Length);
+            var resource = trimmed.Substring("resm:".Length);
             var queryIndex = resource.IndexOf('?');
             if (queryIndex >= 0)
             {
@@ -414,13 +421,44 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
             return Maybe<IconReference>.From(new IconReference(relative, false));
         }
 
-        if (IOPath.IsPathRooted(value))
+        if (IOPath.IsPathRooted(trimmed))
         {
-            return Maybe<IconReference>.From(new IconReference(value, true));
+            if (LooksLikeProjectRelativeRootedPath(trimmed))
+            {
+                var relative = trimmed.TrimStart('/', '\\');
+                return string.IsNullOrWhiteSpace(relative)
+                    ? Maybe<IconReference>.None
+                    : Maybe<IconReference>.From(new IconReference(relative, false));
+            }
+
+            return Maybe<IconReference>.From(new IconReference(trimmed, true));
         }
 
-        value = value.TrimStart('/', '\\');
-        return string.IsNullOrWhiteSpace(value) ? Maybe<IconReference>.None : Maybe<IconReference>.From(new IconReference(value, false));
+        trimmed = trimmed.TrimStart('/', '\\');
+        return string.IsNullOrWhiteSpace(trimmed)
+            ? Maybe<IconReference>.None
+            : Maybe<IconReference>.From(new IconReference(trimmed, false));
+    }
+
+    private static bool LooksLikeProjectRelativeRootedPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (value.StartsWith("//", StringComparison.Ordinal) || value.StartsWith("\\\\", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (value.Length >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/'))
+        {
+            return false;
+        }
+
+        var startsWithSlash = value[0] == '/' || value[0] == '\\';
+        return startsWithSlash && !File.Exists(value);
     }
 
     private readonly record struct IconReference(string Value, bool IsAbsolute)

@@ -34,6 +34,28 @@ public class WindowsIconResolverTests
     }
 
     [Fact]
+    public void Resolves_icon_when_resource_path_starts_with_slash()
+    {
+        using var sandbox = new TemporaryProject();
+
+        sandbox.WriteProjectFile();
+        sandbox.WriteFile("Assets/icon.png", SamplePng);
+        sandbox.WriteText("MainWindow.axaml", "<Window xmlns=\"https://github.com/avaloniaui\" Icon=\"/Assets/icon.png\" />");
+
+        var resolver = new WindowsIconResolver(Maybe<ILogger>.None);
+
+        var result = resolver.Resolve(new Path(sandbox.ProjectPath));
+
+        result.IsSuccess.Should().BeTrue();
+        var icon = result.Value;
+        icon.HasValue.Should().BeTrue();
+        var value = icon.Value;
+        IOPath.GetExtension(value.Path).Should().Be(".ico");
+        File.Exists(value.Path).Should().BeTrue();
+        value.Cleanup();
+    }
+
+    [Fact]
     public void Uses_png_sibling_for_svg_icon()
     {
         using var sandbox = new TemporaryProject();
