@@ -7,6 +7,7 @@ using Serilog;
 using Zafiro.DivineBytes;
 using Zafiro.CSharpFunctionalExtensions;
 using CSharpFunctionalExtensions;
+using System.Reactive.Linq;
 using CliCommand = System.CommandLine.Command;
 using ZafiroCommand = Zafiro.Commands.Command;
 
