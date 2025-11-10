@@ -200,10 +200,10 @@ static class Program
             Description = "Deprecated. Use --no-publish instead"
         };
 
-        var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android" })
+var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "macos" })
         {
             AllowMultipleArgumentsPerToken = true,
-            Description = "Platforms to publish: windows, linux, android"
+            Description = "Platforms to publish: windows, linux, android, macos"
         };
 
         var androidKeystoreOption = new Option<string>("--android-keystore-base64");
@@ -372,7 +372,7 @@ static class Program
             releaseName = string.IsNullOrWhiteSpace(releaseName) ? tag : releaseName;
 
             var platformSet = new HashSet<string>(platforms.Select(p => p.ToLowerInvariant()));
-            var supportedPlatforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "windows", "linux", "android" };
+var supportedPlatforms = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "windows", "linux", "android", "macos" };
             var unsupported = platformSet.Where(p => !supportedPlatforms.Contains(p)).ToList();
             if (unsupported.Any())
             {
@@ -411,7 +411,7 @@ static class Program
             var desktopPrefixes = ExtractPrefixes(projects, ".Desktop");
             var androidPrefixes = ExtractPrefixes(projects, ".Android");
 
-            if (desktop != default)
+if (desktop != default)
             {
                 Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
                 if (platformSet.Contains("windows"))
@@ -423,6 +423,11 @@ static class Program
                 {
                     Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
                     builder = builder.ForLinux(desktop.Path);
+                }
+                if (platformSet.Contains("macos"))
+                {
+                    Log.Information("[Discovery] Adding macOS platform for {Project}", desktop.Path);
+                    builder = builder.ForMacOs(desktop.Path);
                 }
             }
             else
@@ -765,10 +770,10 @@ static class Program
             Description = "If set and wasm platform is selected, export the WASM site into a subfolder"
         };
 
-        var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "wasm" })
+var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "macos", "wasm" })
         {
             AllowMultipleArgumentsPerToken = true,
-            Description = "Platforms to package: windows, linux, android, wasm"
+            Description = "Platforms to package: windows, linux, android, macos, wasm"
         };
 
         var androidKeystoreOption = new Option<string>("--android-keystore-base64");
@@ -917,7 +922,7 @@ static class Program
                 .WithApplicationInfo(packageName!, appId!, appName!)
                 .WithVersion(version!);
 
-            if (desktop != default)
+if (desktop != default)
             {
                 Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
                 if (platformSet.Contains("windows"))
@@ -929,6 +934,11 @@ static class Program
                 {
                     Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
                     builder = builder.ForLinux(desktop.Path);
+                }
+                if (platformSet.Contains("macos"))
+                {
+                    Log.Information("[Discovery] Adding macOS platform for {Project}", desktop.Path);
+                    builder = builder.ForMacOs(desktop.Path);
                 }
             }
             else
@@ -1203,7 +1213,8 @@ static class Program
             var message = string.IsNullOrWhiteSpace(result.Error)
                 ? "dotnet workload restore failed"
                 : result.Error;
-            return Result.Failure(message);
+            Log.Warning("Workload restore failed, continuing: {Message}", message);
+            return Result.Success();
         }
 
         return Result.Success();

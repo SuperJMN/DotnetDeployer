@@ -8,6 +8,7 @@ Solución .NET con tres proyectos:
 - src/DotnetDeployer: biblioteca principal con la lógica de empaquetado, publicación y orquestación.
 - src/DotnetDeployer.Tool: CLI (System.CommandLine) que expone comandos de publicación de NuGet y creación de releases de GitHub.
 - test/DotnetDeployer.Tests: pruebas (xUnit). Algunas pruebas de integración requieren rutas externas y credenciales; filtra si quieres ejecutar solo unitarias.
+- El proyecto se basa en el código de la biblioteca DotnetPackaging para crear la mayoría de los paquetes, excepto el Android APK. Para saber cómo funciona la herramienta, puedes investigar el código fuente, que está en la carpeta padre de este repositorio, usualmente en /mnt/fast/Repos/DotnetPackaging.
 
 Gestión centralizada de versiones de paquetes en src/Directory.Packages.props. TargetFramework: net8.0 (librería y tool); tests usan net9.0.
 
@@ -107,8 +108,8 @@ Para publicar de verdad, elimina --no-publish y opcionalmente define --tag y --r
   - Expone CreateRelease() que devuelve un ReleaseBuilder y métodos conveniencia (CreateGitHubRelease, CreateGitHubReleaseForAvalonia).
 
 - Packager (src/DotnetDeployer/Core/Packager.cs)
-  - Windows: WindowsDeployment -> genera .exe self-contained por arquitectura (x64, arm64). Nombres: {PackageName}-{Version}-windows-{arch}.exe
-  - Linux: LinuxDeployment -> publica y convierte a AppImage ({PackageName}-{Version}-linux-{arch}.appimage)
+  - Windows: WindowsDeployment -> genera .exe self-contained y .msix por arquitectura (x64, arm64). Nombres: {PackageName}-{Version}-windows-{arch}.exe/.msix
+  - Linux: LinuxDeployment -> publica y empaqueta como AppImage, Flatpak y RPM ({PackageName}-{Version}-linux-{arch}.[appimage|flatpak|rpm])
   - Android: AndroidDeployment -> publica APKs, filtra los firmados que contienen ApplicationId y los renombra a {PackageName}-{DisplayVersion}-android[-sufijo].apk (evita duplicados).
   - WASM: publica proyecto y extrae wwwroot como sitio (WasmApp) para despliegue (no se adjunta por defecto como asset de release).
 
@@ -148,4 +149,3 @@ Para publicar de verdad, elimina --no-publish y opcionalmente define --tag y --r
   - Preferir programación reactiva si no complica en exceso.
   - No usar el sufijo Async en métodos que devuelven Task.
 - Contexto externo: este repo proporciona el tool "dotnetdeployer". En repos como Zafiro.Avalonia, prioriza este tool frente a Nuke Build para empaquetado/publicación.
-

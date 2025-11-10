@@ -73,7 +73,7 @@ Use the `github` command group to publish packaged artifacts or WebAssembly site
 Create artifacts per platform and optionally publish a GitHub release with uploaded assets.
 
 Platform discovery rules (by project suffix):
-- `.Desktop` => Windows and/or Linux (self-contained executables)
+- `.Desktop` => Windows (self-contained `.exe` plus `.msix`) and/or Linux (`.AppImage`, `.flatpak`, `.rpm`)
 - `.Android` => Signed Android packages (`.apk` or `.aab`)
 
 > Need WebAssembly? Run `dotnet run --project src/DotnetDeployer.Tool -- github pages ...` instead of adding `wasm` here.

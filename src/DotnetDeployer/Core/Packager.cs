@@ -2,6 +2,7 @@ using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Linux;
 using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Platforms.Windows;
+using DotnetDeployer.Platforms.Mac;
 
 namespace DotnetDeployer.Core;
 
@@ -23,6 +24,12 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
     {
         var platformLogger = logger.ForPlatform("Linux");
         return new LinuxDeployment(dotnet, path, metadata, platformLogger).Create();
+    }
+
+    public Task<Result<IEnumerable<INamedByteSource>>> CreateMacPackages(Path path, string appName, string version)
+    {
+        var platformLogger = logger.ForPlatform("macOS");
+        return new MacDeployment(dotnet, path, appName, version, platformLogger).Create();
     }
     
     public Task<Result<INamedByteSource>> CreateNugetPackage(Path path, string version)

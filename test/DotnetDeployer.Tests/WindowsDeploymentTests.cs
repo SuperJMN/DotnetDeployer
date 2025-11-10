@@ -1,3 +1,4 @@
+using System.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Windows;
 using FluentAssertions;
@@ -34,7 +35,12 @@ public class WindowsDeploymentTests
         result.Should().Succeed();
         dotnet.Arguments.Should().NotBeEmpty();
         dotnet.Arguments.Should().AllSatisfy(argument => argument.Should().Contain("ApplicationIcon"));
-        result.Value.Should().HaveCount(2);
+        var artifactNames = result.Value.Select(resource => resource.Name).ToList();
+        artifactNames.Should().HaveCount(4);
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.exe");
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.msix");
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.exe");
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.msix");
     }
 
     private sealed class RecordingDotnet(Result<IContainer> publishResult) : IDotnet
