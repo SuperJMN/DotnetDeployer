@@ -14,8 +14,7 @@ public class ReleasePackagingStrategy
     public async Task<Result<IEnumerable<INamedByteSource>>> PackageForPlatforms(ReleaseConfiguration configuration)
     {
         var allFiles = new List<INamedByteSource>();
-        // var projectPath = new Path(configuration.ProjectPath);
-
+        
         // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
         {
@@ -54,6 +53,25 @@ public class ReleasePackagingStrategy
             allFiles.AddRange(linuxResult.Value);
         }
 
+        // macOS packages
+        if (configuration.Platforms.HasFlag(TargetPlatform.MacOs))
+        {
+            var macConfig = configuration.MacOsConfig;
+            if (macConfig == null)
+            {
+                return Result.Failure<IEnumerable<INamedByteSource>>(
+                    "macOS configuration is required for macOS packaging");
+            }
+
+            var macResult = await packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version);
+            if (macResult.IsFailure)
+            {
+                return Result.Failure<IEnumerable<INamedByteSource>>(macResult.Error);
+            }
+
+            allFiles.AddRange(macResult.Value);
+        }
+
         // Android packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Android))
         {
@@ -90,7 +108,6 @@ public class ReleasePackagingStrategy
             }
 
             // Note: WasmApp is typically deployed to GitHub Pages or similar, not included as release asset
-            // If you need to include WASM files in release, you'd need a conversion method
         }
 
         return Result.Success<IEnumerable<INamedByteSource>>(allFiles);

@@ -1,5 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using DotnetDeployer.Core;
 using DotnetPackaging;
+using DotnetPackaging.Msix;
+using DotnetPackaging.Msix.Core.Manifest;
+using DotnetPackaging.AppImage.Core;
 using Zafiro.CSharpFunctionalExtensions;
 
 namespace DotnetDeployer.Platforms.Windows;
@@ -19,33 +25,109 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         IEnumerable<Architecture> supportedArchitectures = [Architecture.Arm64, Architecture.X64];
 
         return supportedArchitectures
-            .Select(architecture => CreateFor(architecture, options).Tap(() => logger.Tap(l => l.Information("Publishing .exe for {Architecture}", architecture))))
-            .CombineInOrder();
+            .Select(architecture => CreateFor(architecture, options))
+            .CombineInOrder()
+            .Map(results => results.SelectMany(files => files));
     }
 
-    private Task<Result<INamedByteSource>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
+    private async Task<Result<IEnumerable<INamedByteSource>>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
     {
+        logger.Execute(log => log.Information("Publishing packages for Windows {Architecture}", architecture));
+
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
         {
-            return Task.FromResult(Result.Failure<INamedByteSource>(iconResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(iconResult.Error);
         }
 
         var icon = iconResult.Value;
         var args = CreateArgs(architecture, deploymentOptions, icon);
         icon.Tap(value => logger.Execute(log => log.Information("Using icon '{IconPath}' for Windows packaging", value.Path)));
-        var finalName = deploymentOptions.PackageName + "-" + deploymentOptions.Version + "-windows-" + $"{WindowsArchitecture[architecture].Suffix}" + ".exe";
+        var baseName = $"{deploymentOptions.PackageName}-{deploymentOptions.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
 
-        return dotnet.Publish(projectPath, args)
-            .TapError(_ => icon.Execute(candidate => candidate.Cleanup()))
-            .Bind(directory => directory.ResourcesRecursive()
-                .TryFirst(file => file.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                .ToResult($"Can't find any .exe file in publish result directory {directory}"))
-            .Map(file =>
+        try
+        {
+            var publishResult = await dotnet.Publish(projectPath, args);
+            if (publishResult.IsFailure)
             {
-                icon.Execute(candidate => candidate.Cleanup());
-                return (INamedByteSource)new Resource(finalName, file);
-            });
+                return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            }
+
+            var directory = publishResult.Value;
+
+            // Locate .exe file inside publish output (Windows executable)
+            var exeWithPathResult = directory.ResourcesWithPathsRecursive()
+                .TryFirst(file => file.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                .ToResult($"Can't find any .exe file in publish result directory {directory}");
+            if (exeWithPathResult.IsFailure)
+            {
+                return exeWithPathResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            }
+
+            var executable = (INamedByteSource)exeWithPathResult.Value;
+
+            var resources = new List<INamedByteSource>
+            {
+                // Rename the self-contained single-file app to avoid confusion with the installer
+                new Resource($"{baseName}-sfx.exe", executable)
+            };
+
+            // Materialize container to a temp directory for installer stub packaging
+            var publishCopyDir = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-pubcopy-{Guid.NewGuid():N}");
+            var writeResult = await directory.WriteTo(publishCopyDir);
+            if (writeResult.IsFailure)
+            {
+                return Result.Failure<IEnumerable<INamedByteSource>>($"Failed to copy publish output: {writeResult.Error}");
+            }
+
+            // Create MSIX
+            var msixResult = CreateMsixResource(directory, executable, architecture, deploymentOptions, baseName);
+            if (msixResult.IsFailure)
+            {
+                return msixResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            }
+            resources.Add(msixResult.Value);
+
+            // Create Windows Setup .exe (stub-based installer)
+            var setupTemp = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-winsetup-{Guid.NewGuid():N}.exe");
+            try
+            {
+                var options = new DotnetPackaging.Options
+                {
+                    Name = deploymentOptions.PackageName,
+                    Id = Maybe<string>.From($"com.{SanitizeIdentifier(deploymentOptions.PackageName)}"),
+                    Version = deploymentOptions.Version,
+                    Comment = Maybe<string>.From(deploymentOptions.MsixOptions.AppDescription ?? deploymentOptions.PackageName),
+                };
+
+                var svc = new DotnetPackaging.Exe.ExePackagingService();
+                var buildResult = await svc.BuildFromDirectory(new DirectoryInfo(publishCopyDir), new FileInfo(setupTemp), options, deploymentOptions.PackageName, WindowsArchitecture[architecture].Runtime, null);
+                if (buildResult.IsFailure)
+                {
+                    logger.Execute(log => log.Warning("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
+                }
+                else
+                {
+                    var bytes = await File.ReadAllBytesAsync(setupTemp);
+                    resources.Add(new Resource($"{baseName}-setup.exe", Zafiro.DivineBytes.ByteSource.FromBytes(bytes)));
+                }
+            }
+            finally
+            {
+                try 
+                { 
+                    if (System.IO.Directory.Exists(publishCopyDir)) System.IO.Directory.Delete(publishCopyDir, true);
+                    if (File.Exists(setupTemp)) File.Delete(setupTemp); 
+                } 
+                catch { /* ignore */ }
+            }
+
+            return Result.Success<IEnumerable<INamedByteSource>>(resources);
+        }
+        finally
+        {
+            icon.Execute(candidate => candidate.Cleanup());
+        }
     }
 
     private static string CreateArgs(Architecture architecture, DeploymentOptions deploymentOptions, Maybe<WindowsIcon> icon)
@@ -72,9 +154,121 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         return ArgumentsParser.Parse(options, properties);
     }
 
+    private Result<INamedByteSource> CreateMsixResource(
+        IContainer container,
+        INamedByteSource executable,
+        Architecture architecture,
+        DeploymentOptions deploymentOptions,
+        string baseName)
+    {
+        logger.Execute(log => log.Information("Building MSIX for Windows {Architecture}", architecture));
+
+        var manifest = BuildMsixManifest(deploymentOptions, executable.Name);
+        var msixResult = Msix.FromDirectoryAndMetadata(container, manifest, logger);
+        if (msixResult.IsFailure)
+        {
+            return msixResult.ConvertFailure<INamedByteSource>();
+        }
+
+        return Result.Success<INamedByteSource>(new Resource($"{baseName}.msix", msixResult.Value));
+    }
+
+    private static AppManifestMetadata BuildMsixManifest(DeploymentOptions options, string executableName)
+    {
+        var msixOptions = options.MsixOptions;
+        var identityName = msixOptions.IdentityName ?? BuildDefaultIdentity(options.PackageName);
+        var displayName = msixOptions.AppDisplayName ?? options.PackageName;
+        var description = msixOptions.AppDescription ?? displayName;
+        var publisher = msixOptions.Publisher ?? $"CN={displayName}";
+        var publisherDisplayName = msixOptions.PublisherDisplayName ?? displayName;
+        var appId = msixOptions.AppId ?? SanitizeIdentifier(options.PackageName);
+
+        var manifest = new AppManifestMetadata
+        {
+            Name = identityName,
+            Publisher = publisher,
+            Version = NormalizeMsixVersion(options.Version),
+            DisplayName = displayName,
+            PublisherDisplayName = publisherDisplayName,
+            Logo = msixOptions.Logo ?? "Assets\\StoreLogo.png",
+            AppId = appId,
+            Executable = executableName,
+            AppDisplayName = displayName,
+            AppDescription = description,
+            Square150x150Logo = msixOptions.Square150x150Logo ?? "Assets\\Square150x150Logo.png",
+            Square44x44Logo = msixOptions.Square44x44Logo ?? "Assets\\Square44x44Logo.png",
+            BackgroundColor = msixOptions.BackgroundColor ?? "transparent",
+            InternetClient = msixOptions.InternetClient ?? true,
+            RunFullTrust = msixOptions.RunFullTrust ?? true
+        };
+
+        return manifest;
+    }
+
+    private static string NormalizeMsixVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return "1.0.0.0";
+        }
+
+        var sanitized = version.Split(['-', '+'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? "1.0.0.0";
+
+        var segments = sanitized.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var values = new int[4];
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (i < segments.Length && int.TryParse(segments[i], out var parsed))
+            {
+                values[i] = Math.Max(parsed, 0);
+            }
+            else
+            {
+                values[i] = 0;
+            }
+        }
+
+        return string.Join('.', values);
+    }
+
+    private static string BuildDefaultIdentity(string packageName)
+    {
+        var sanitized = SanitizeIdentifier(packageName);
+        if (sanitized.Contains('.', StringComparison.Ordinal))
+        {
+            return sanitized;
+        }
+
+        return $"com.example.{sanitized}";
+    }
+
+    private static string SanitizeIdentifier(string value)
+    {
+        var cleaned = new string(value.Where(char.IsLetterOrDigit).ToArray());
+        return string.IsNullOrWhiteSpace(cleaned) ? "app" : cleaned.ToLowerInvariant();
+    }
+
     public class DeploymentOptions
     {
         public required string Version { get; set; }
         public required string PackageName { get; set; }
+        public MsixManifestOptions MsixOptions { get; set; } = new();
+
+        public class MsixManifestOptions
+        {
+            public string? IdentityName { get; set; }
+            public string? Publisher { get; set; }
+            public string? PublisherDisplayName { get; set; }
+            public string? AppDisplayName { get; set; }
+            public string? AppDescription { get; set; }
+            public string? BackgroundColor { get; set; }
+            public string? Logo { get; set; }
+            public string? Square150x150Logo { get; set; }
+            public string? Square44x44Logo { get; set; }
+            public bool? InternetClient { get; set; }
+            public bool? RunFullTrust { get; set; }
+            public string? AppId { get; set; }
+        }
     }
 }

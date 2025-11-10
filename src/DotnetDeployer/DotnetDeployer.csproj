@@ -7,9 +7,15 @@
     </PropertyGroup>
     
     <ItemGroup>
-      <PackageReference Include="DotnetPackaging.AppImage" />
         <PackageReference Include="Octokit" />
         <PackageReference Include="Zafiro.DivineBytes" />
+        <PackageReference Include="DotnetPackaging" />
+        <PackageReference Include="DotnetPackaging.AppImage" />
+        <PackageReference Include="DotnetPackaging.Flatpak" />
+        <PackageReference Include="DotnetPackaging.Msix" />
+        <PackageReference Include="DotnetPackaging.Rpm" />
+        <PackageReference Include="DotnetPackaging.Dmg" />
+        <PackageReference Include="DotnetPackaging.Exe" />
     </ItemGroup>
 
 </Project>

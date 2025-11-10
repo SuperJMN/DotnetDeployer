@@ -4,11 +4,17 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="DotnetPackaging" Version="7.1.28" />
-    <PackageVersion Include="DotnetPackaging.AppImage" Version="7.1.28" />
+    <PackageVersion Include="DotnetPackaging" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.AppImage" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Flatpak" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Msix" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Rpm" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Dmg" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Exe" Version="8.0.11" />
+    <PackageVersion Include="DotnetPackaging.Deb" Version="8.0.11" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
-    <PackageVersion Include="Zafiro.DivineBytes" Version="36.0.1" />
+    <PackageVersion Include="Zafiro.DivineBytes" Version="40.0.0" />
   </ItemGroup>
 </Project>

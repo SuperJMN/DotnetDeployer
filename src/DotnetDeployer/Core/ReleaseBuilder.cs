@@ -90,6 +90,16 @@ public class ReleaseBuilder(Context context)
         };
         return ForLinux(projectPath, metadata);
     }
+
+    public ReleaseBuilder ForMacOs(string projectPath)
+    {
+        configuration.MacOsConfig = new MacOsPlatformConfig
+        {
+            ProjectPath = projectPath
+        };
+        configuration.Platforms |= TargetPlatform.MacOs;
+        return this;
+    }
     
     public ReleaseBuilder ForAndroid(string projectPath, AndroidDeployment.DeploymentOptions options)
     {
@@ -121,7 +131,8 @@ public class ReleaseBuilder(Context context)
     public ReleaseBuilder ForDesktop(string desktopProjectPath)
     {
         return ForWindows(desktopProjectPath)
-               .ForLinux(desktopProjectPath);
+               .ForLinux(desktopProjectPath)
+               .ForMacOs(desktopProjectPath);
     }
 
     // Method for typical Avalonia multi-project setup
@@ -130,6 +141,7 @@ public class ReleaseBuilder(Context context)
         var builder = WithVersion(version)
             .ForWindows($"{baseProjectName}.Desktop")
             .ForLinux($"{baseProjectName}.Desktop")
+            .ForMacOs($"{baseProjectName}.Desktop")
             .ForWebAssembly($"{baseProjectName}.Browser");
             
         if (androidOptions != null)
@@ -152,13 +164,14 @@ public class ReleaseBuilder(Context context)
 
         var builder = WithVersion(version);
 
-        // Desktop (Windows + Linux)
+        // Desktop (Windows + Linux + macOS)
         var desktop = projects.FirstOrDefault(p => p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
         if (desktop != default)
         {
             context.Logger.Information("Found Desktop project: {ProjectPath}", desktop.Path);
             builder = builder.ForWindows(desktop.Path)
-                               .ForLinux(desktop.Path);
+                               .ForLinux(desktop.Path)
+                               .ForMacOs(desktop.Path);
         }
         else
         {

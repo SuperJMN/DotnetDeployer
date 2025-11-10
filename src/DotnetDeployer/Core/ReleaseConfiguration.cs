@@ -10,5 +10,11 @@ public class ReleaseConfiguration
     public WindowsPlatformConfig? WindowsConfig { get; internal set; }
     public AndroidPlatformConfig? AndroidConfig { get; internal set; }
     public LinuxPlatformConfig? LinuxConfig { get; internal set; }
+    public MacOsPlatformConfig? MacOsConfig { get; internal set; }
     public WebAssemblyPlatformConfig? WebAssemblyConfig { get; internal set; }
+}
+
+public class MacOsPlatformConfig
+{
+    public required string ProjectPath { get; init; }
 }
