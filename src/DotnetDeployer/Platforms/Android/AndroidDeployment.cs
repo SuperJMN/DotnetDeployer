@@ -57,8 +57,10 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             .Where(file => file.Name.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // Log all discovered APKs
-        logger.Execute(log =>
+        // Log all discovered packages with Android platform context
+        var formatLabel = options.PackageFormat == AndroidPackageFormat.Apk ? "APK" : "AAB";
+        var androidLogger = logger.ForPackaging("Android", formatLabel, "");
+        androidLogger.Execute(log =>
         {
             if (allPackages.Count == 0)
             {
@@ -94,7 +96,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             })
             .ToList();
 
-        logger.Execute(log =>
+        androidLogger.Execute(log =>
         {
             log.Information("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
             foreach (var apk in selectedPackages)
@@ -117,7 +119,9 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                 var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
                 var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}{extension}";
                 
-                logger.Information("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName);
+                var archLabel = DetectAndroidArch(originalName);
+                var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
+                renLogger.Execute(log => log.Information("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
                 return (INamedByteSource)new Resource(finalName, resource);
             })
             .GroupBy(res => res.Name)
@@ -160,5 +164,15 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         public required string SigningKeyPass { get; init; }
         public Maybe<Path> AndroidSdkPath { get; set; } = Maybe<Path>.None;
         public AndroidPackageFormat PackageFormat { get; init; } = AndroidPackageFormat.Apk;
+    }
+
+    private static string DetectAndroidArch(string name)
+    {
+        var lower = name.ToLowerInvariant();
+        if (lower.Contains("arm64") || lower.Contains("arm64-v8a")) return "ARM64";
+        if (lower.Contains("x86_64")) return "X64";
+        if (lower.Contains("armeabi-v7a") || lower.Contains("armv7")) return "ARM";
+        if (lower.Contains("x86")) return "X86";
+        return string.Empty; // unknown/universal
     }
 }

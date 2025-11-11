@@ -31,6 +31,10 @@ private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(
     {
         logger.Execute(log => log.Information("Publishing macOS packages for {Architecture}", architecture));
 
+        var archLabel = architecture.ToArchLabel();
+        var publishLogger = logger.ForPackaging("macOS", "Publish", archLabel);
+        var dmgLogger = logger.ForPackaging("macOS", "DMG", archLabel);
+
         var publishArgs = ArgumentsParser.Parse(
             new[]
             {
@@ -40,6 +44,7 @@ private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(
             },
             Array.Empty<string[]>());
 
+        publishLogger.Execute(log => log.Information("Publishing macOS packages for {Architecture}", architecture));
         var publishResult = await dotnet.Publish(projectPath, publishArgs);
         if (publishResult.IsFailure)
         {
@@ -60,10 +65,12 @@ private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(
         var tempDmg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
         try
         {
+            dmgLogger.Execute(log => log.Information("Building DMG"));
             await DotnetPackaging.Dmg.DmgIsoBuilder.Create(publishCopyDir, tempDmg, appName);
 
             var bytes = await File.ReadAllBytesAsync(tempDmg);
             var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
+            dmgLogger.Execute(log => log.Information("Built {File}", $"{baseName}.dmg"));
             var resource = (INamedByteSource)new Resource($"{baseName}.dmg", Zafiro.DivineBytes.ByteSource.FromBytes(bytes));
             return Result.Success<IEnumerable<INamedByteSource>>([resource]);
         }

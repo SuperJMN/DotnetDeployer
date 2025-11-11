@@ -32,7 +32,9 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
 
     private async Task<Result<IEnumerable<INamedByteSource>>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
     {
-        logger.Execute(log => log.Information("Publishing packages for Windows {Architecture}", architecture));
+        var archLabel = architecture.ToArchLabel();
+        var publishLogger = logger.ForPackaging("Windows", "Publish", archLabel);
+        publishLogger.Execute(log => log.Information("Publishing packages for Windows {Architecture}", architecture));
 
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
@@ -42,7 +44,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
 
         var icon = iconResult.Value;
         var args = CreateArgs(architecture, deploymentOptions, icon);
-        icon.Tap(value => logger.Execute(log => log.Information("Using icon '{IconPath}' for Windows packaging", value.Path)));
+        icon.Tap(value => publishLogger.Execute(log => log.Information("Using icon '{IconPath}' for Windows packaging", value.Path)));
         var baseName = $"{deploymentOptions.PackageName}-{deploymentOptions.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
 
         try
@@ -64,6 +66,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
                 return exeWithPathResult.ConvertFailure<IEnumerable<INamedByteSource>>();
             }
 
+            var sfxLogger = logger.ForPackaging("Windows", "SFX", archLabel);
             var executable = (INamedByteSource)exeWithPathResult.Value;
 
             var resources = new List<INamedByteSource>
@@ -71,6 +74,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
                 // Rename the self-contained single-file app to avoid confusion with the installer
                 new Resource($"{baseName}-sfx.exe", executable)
             };
+            sfxLogger.Execute(log => log.Information("Built SFX executable {File}", $"{baseName}-sfx.exe"));
 
             // Materialize container to a temp directory for installer stub packaging
             var publishCopyDir = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-pubcopy-{Guid.NewGuid():N}");
@@ -81,7 +85,8 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             }
 
             // Create MSIX
-            var msixResult = CreateMsixResource(directory, executable, architecture, deploymentOptions, baseName);
+            var msixLogger = logger.ForPackaging("Windows", "MSIX", archLabel);
+            var msixResult = CreateMsixResource(directory, executable, architecture, deploymentOptions, baseName, msixLogger);
             if (msixResult.IsFailure)
             {
                 return msixResult.ConvertFailure<IEnumerable<INamedByteSource>>();
@@ -90,6 +95,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
 
             // Create Windows Setup .exe (stub-based installer)
             var setupTemp = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-winsetup-{Guid.NewGuid():N}.exe");
+            var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
             try
             {
                 var options = new DotnetPackaging.Options
@@ -104,12 +110,13 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
                 var buildResult = await svc.BuildFromDirectory(new DirectoryInfo(publishCopyDir), new FileInfo(setupTemp), options, deploymentOptions.PackageName, WindowsArchitecture[architecture].Runtime, null);
                 if (buildResult.IsFailure)
                 {
-                    logger.Execute(log => log.Warning("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
+                    installerLogger.Execute(log => log.Warning("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
                 }
                 else
                 {
                     var bytes = await File.ReadAllBytesAsync(setupTemp);
                     resources.Add(new Resource($"{baseName}-setup.exe", Zafiro.DivineBytes.ByteSource.FromBytes(bytes)));
+                    installerLogger.Execute(log => log.Information("Built Installer {File}", $"{baseName}-setup.exe"));
                 }
             }
             finally
@@ -159,9 +166,10 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         INamedByteSource executable,
         Architecture architecture,
         DeploymentOptions deploymentOptions,
-        string baseName)
+        string baseName,
+        Maybe<ILogger> msixLogger)
     {
-        logger.Execute(log => log.Information("Building MSIX for Windows {Architecture}", architecture));
+        msixLogger.Execute(log => log.Information("Building MSIX for Windows {Architecture}", architecture));
 
         var manifest = BuildMsixManifest(deploymentOptions, executable.Name);
         var msixResult = Msix.FromDirectoryAndMetadata(container, manifest, logger);

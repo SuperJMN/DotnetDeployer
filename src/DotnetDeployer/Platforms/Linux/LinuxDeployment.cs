@@ -41,7 +41,9 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
     private Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(Architecture architecture)
     {
-        logger.Execute(log => log.Information("Publishing Linux packages for {Architecture}", architecture));
+        var archLabel = architecture.ToArchLabel();
+        var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
+        publishLogger.Execute(log => log.Information("Publishing Linux packages for {Architecture}", architecture));
 
         var publishOptions = new[]
         {
@@ -60,6 +62,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
     {
         var version = metadata.Version.GetValueOrDefault("1.0.0");
         var baseFileName = $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
+        var archLabel = architecture.ToArchLabel();
 
         var options = CreateDirectoryOptions(metadata, architecture);
         var executableResult = await BuildUtils.GetExecutable(container, options);
@@ -79,28 +82,36 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
         var results = new List<INamedByteSource>();
 
+        var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
+        appImageLogger.Execute(log => log.Information("Building AppImage"));
         var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
         if (appImageResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
         }
         results.Add(appImageResult.Value);
+        appImageLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.appimage"));
 
+        var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
+        flatpakLogger.Execute(log => log.Information("Building Flatpak"));
         var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
         if (flatpakResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
         }
         results.Add(flatpakResult.Value);
+        flatpakLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.flatpak"));
 
+        var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
         var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
         if (rpmResult.IsFailure)
         {
-            logger.Execute(log => log.Warning("RPM packaging skipped: {Error}", rpmResult.Error));
+            rpmLogger.Execute(log => log.Warning("RPM packaging skipped: {Error}", rpmResult.Error));
         }
         else
         {
             results.Add(rpmResult.Value);
+            rpmLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.rpm"));
         }
 
         return Result.Success<IEnumerable<INamedByteSource>>(results);
