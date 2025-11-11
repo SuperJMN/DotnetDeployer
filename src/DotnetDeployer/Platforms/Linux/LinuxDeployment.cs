@@ -9,6 +9,7 @@ using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Flatpak;
 using DotnetPackaging.Rpm;
 using DotnetPackaging.Rpm.Builder;
+using DotnetPackaging.Publish;
 using Zafiro.DivineBytes;
 using Zafiro.CSharpFunctionalExtensions;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
@@ -43,18 +44,17 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
-        publishLogger.Execute(log => log.Information("Publishing Linux packages for {Architecture}", architecture));
+publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
 
-        var publishOptions = new[]
+        var request = new ProjectPublishRequest(projectPath)
         {
-            new[] { "configuration", "Release" },
-            new[] { "runtime", LinuxArchitecture[architecture].Runtime },
-            new[] { "self-contained", "true" }
+            Rid = Maybe<string>.From(LinuxArchitecture[architecture].Runtime),
+            SelfContained = true,
+            Configuration = "Release",
+            MsBuildProperties = new Dictionary<string, string>()
         };
 
-        var arguments = ArgumentsParser.Parse(publishOptions, []);
-
-        return dotnet.Publish(projectPath, arguments)
+        return dotnet.Publish(request)
             .Bind(container => BuildArtifacts(container, architecture));
     }
 
@@ -82,37 +82,38 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
         var results = new List<INamedByteSource>();
 
-        var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
-        appImageLogger.Execute(log => log.Information("Building AppImage"));
-        var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
-        if (appImageResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
-        }
-        results.Add(appImageResult.Value);
-        appImageLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.appimage"));
+var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
+appImageLogger.Execute(log => log.Information("Creating AppImage"));
+var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
+if (appImageResult.IsFailure)
+{
+    return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
+}
+results.Add(appImageResult.Value);
+appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
 
-        var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
-        flatpakLogger.Execute(log => log.Information("Building Flatpak"));
-        var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
-        if (flatpakResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
-        }
-        results.Add(flatpakResult.Value);
-        flatpakLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.flatpak"));
+var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
+flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
+var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
+if (flatpakResult.IsFailure)
+{
+    return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
+}
+results.Add(flatpakResult.Value);
+flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
 
-        var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
-        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
-        if (rpmResult.IsFailure)
-        {
-            rpmLogger.Execute(log => log.Warning("RPM packaging skipped: {Error}", rpmResult.Error));
-        }
-        else
-        {
-            results.Add(rpmResult.Value);
-            rpmLogger.Execute(log => log.Information("Built {File}", $"{baseFileName}.rpm"));
-        }
+var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
+rpmLogger.Execute(log => log.Information("Creating RPM"));
+var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
+if (rpmResult.IsFailure)
+{
+    rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
+}
+else
+{
+    results.Add(rpmResult.Value);
+    rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
+}
 
         return Result.Success<IEnumerable<INamedByteSource>>(results);
     }

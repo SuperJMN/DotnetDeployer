@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Reactive.Linq;
 using DotnetDeployer.Core;
+using DotnetPackaging.Publish;
 using Zafiro.Mixins;
 using File = System.IO.File;
 
@@ -24,8 +26,8 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                     return await androidSdkPathResult
                         .Bind(async androidSdkPath =>
                         {
-                            var args = CreateArgs(options, tempKeystore.FilePath, androidSdkPath);
-                            var publishResult = await dotnet.Publish(projectPath, args);
+                            var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
+                            var publishResult = await dotnet.Publish(request);
                             return publishResult.Map(AndroidPackages);
                         });
                 }
@@ -64,14 +66,14 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         {
             if (allPackages.Count == 0)
             {
-                log.Information("No {Extension} files found in publish output.", extension);
+log.Debug("No {Extension} files found in publish output.", extension);
             }
             else
             {
-                log.Information("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
+log.Debug("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
                 foreach (var apk in allPackages)
                 {
-                    log.Information(" - {Apk}", apk.Name);
+log.Debug(" - {Apk}", apk.Name);
                 }
             }
         });
@@ -98,15 +100,15 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
         androidLogger.Execute(log =>
         {
-            log.Information("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
+log.Debug("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
             foreach (var apk in selectedPackages)
             {
-                log.Information(" * {Apk}", apk.Name);
+log.Debug(" * {Apk}", apk.Name);
             }
 
             if (selectedPackages.Count == 0)
             {
-                log.Warning("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
+log.Debug("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
             }
         });
 
@@ -117,11 +119,16 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                 var originalName = global::System.IO.Path.GetFileNameWithoutExtension(resource.Name);
                 var dashIndex = originalName.LastIndexOf('-');
                 var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
-                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}{extension}";
+                var sanitizedSuffix = requiresSignedSuffix
+                    ? suffix.Replace("-Signed", string.Empty, StringComparison.OrdinalIgnoreCase)
+                    : suffix;
+                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{sanitizedSuffix}{extension}";
                 
                 var archLabel = DetectAndroidArch(originalName);
                 var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
-                renLogger.Execute(log => log.Information("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+                renLogger.Execute(log => log.Information("Creating {File}", finalName));
+                renLogger.Execute(log => log.Information("Created {File}", finalName));
                 return (INamedByteSource)new Resource(finalName, resource);
             })
             .GroupBy(res => res.Name)
@@ -130,24 +137,28 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         return renamed;
     }
 
-    private static string CreateArgs(DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)
+    private static ProjectPublishRequest CreateRequest(Path projectPath, DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)
     {
-        var properties = new[]
+        var properties = new Dictionary<string, string>
         {
-            new[] { "ApplicationVersion", deploymentOptions.ApplicationVersion.ToString() },
-            new[] { "ApplicationDisplayVersion", deploymentOptions.ApplicationDisplayVersion },
-            new[] { "AndroidKeyStore", "true" },
-            new[] { "AndroidSigningKeyStore", keyStorePath },
-            new[] { "AndroidSigningKeyAlias", deploymentOptions.SigningKeyAlias },
-            new[] { "AndroidSigningStorePass", deploymentOptions.SigningStorePass },
-            new[] { "AndroidSigningKeyPass", deploymentOptions.SigningKeyPass },
-            new[] { "AndroidSdkDirectory", androidSdkPath },
-            new[] { "AndroidSignV1", "true" },
-            new[] { "AndroidSignV2", "true" },
-            new[] { "AndroidPackageFormats", deploymentOptions.PackageFormat.ToMsBuildValue() },
+            ["ApplicationVersion"] = deploymentOptions.ApplicationVersion.ToString(),
+            ["ApplicationDisplayVersion"] = deploymentOptions.ApplicationDisplayVersion,
+            ["AndroidKeyStore"] = "true",
+            ["AndroidSigningKeyStore"] = keyStorePath,
+            ["AndroidSigningKeyAlias"] = deploymentOptions.SigningKeyAlias,
+            ["AndroidSigningStorePass"] = deploymentOptions.SigningStorePass,
+            ["AndroidSigningKeyPass"] = deploymentOptions.SigningKeyPass,
+            ["AndroidSdkDirectory"] = androidSdkPath,
+            ["AndroidSignV1"] = "true",
+            ["AndroidSignV2"] = "true",
+            ["AndroidPackageFormats"] = deploymentOptions.PackageFormat.ToMsBuildValue(),
         };
 
-        return ArgumentsParser.Parse([["configuration", "Release"]], properties);
+        return new ProjectPublishRequest(projectPath.Value)
+        {
+            Configuration = "Release",
+            MsBuildProperties = properties
+        };
     }
 
     public class DeploymentOptions

@@ -16,7 +16,7 @@ sealed class WorkloadRestorer
     public async Task<Result> Restore(FileInfo solution)
     {
         var workingDirectory = solution.DirectoryName ?? Environment.CurrentDirectory;
-        Log.Information("Ensuring workloads are restored for solution {Solution}", solution.FullName);
+Log.Debug("Ensuring workloads are restored for solution {Solution}", solution.FullName);
 
         var logger = Maybe<ILogger>.From(Log.Logger);
         var command = new ZafiroCommand(logger);
@@ -28,7 +28,7 @@ sealed class WorkloadRestorer
             var message = string.IsNullOrWhiteSpace(result.Error)
                 ? "dotnet workload restore failed"
                 : result.Error;
-            Log.Warning("Workload restore failed, continuing: {Message}", message);
+Log.Debug("Workload restore failed, continuing: {Message}", message);
             return Result.Success();
         }
 

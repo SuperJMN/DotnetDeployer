@@ -132,11 +132,13 @@ sealed class GitHubPagesCommandFactory
             var skipPublish = noPublish || dryRun;
 
             var projects = projectReader.ReadProjects(solution).ToList();
-            Log.Information("[Discovery] Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
             var prefix = context.ParseResult.GetValueForOption(prefixOption);
             prefix = string.IsNullOrWhiteSpace(prefix) ? Path.GetFileNameWithoutExtension(solution.Name) : prefix;
-            Log.Information("[Discovery] Using prefix: {Prefix}", prefix);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Using prefix: {Prefix}", prefix);
 
             var browser = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
             var browserPrefixes = ExtractPrefixes(projects, ".Browser");

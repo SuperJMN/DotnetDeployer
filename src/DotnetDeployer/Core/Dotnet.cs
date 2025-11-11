@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using DotnetPackaging;
+using DotnetPackaging.Publish;
 using Zafiro.Commands;
 using Zafiro.DivineBytes.System.IO;
 
@@ -9,30 +11,44 @@ public class Dotnet : IDotnet
     public ICommand Command { get; }
     private readonly Maybe<ILogger> logger;
     private readonly System.IO.Abstractions.FileSystem filesystem = new();
+    private readonly DotnetPublisher publisher = new();
 
     public Dotnet(ICommand command, Maybe<ILogger> logger)
     {
         Command = command;
         this.logger = logger;
     }
-    
-    public Task<Result<IContainer>> Publish(string projectPath, string arguments = "")
+
+    public async Task<Result<IContainer>> Publish(ProjectPublishRequest request)
     {
-        return Result.Try(() => filesystem.Directory.CreateTempSubdirectory())
-            .Bind(outputDir =>
-            {
-                IEnumerable<string[]> options =
-                [
-                    ["output", outputDir.FullName],
-                ];
+logger.Execute(log =>
+            log.Debug(
+                "Publishing project {ProjectPath} with runtime {Runtime} (SelfContained: {SelfContained}, SingleFile: {SingleFile})",
+                request.ProjectPath,
+                request.Rid.Match(value => value, () => "default"),
+                request.SelfContained,
+                request.SingleFile));
 
-                var implicitArguments = ArgumentsParser.Parse(options, []);
+        var publishResult = await publisher.Publish(request);
+        if (publishResult.IsFailure)
+        {
+            var error = publishResult.Error ?? "Unknown publish error";
+            logger.Execute(log =>
+                log.Error(
+                    "Publishing project {ProjectPath} failed: {Error}",
+                    request.ProjectPath,
+                    error));
 
-                var finalArguments = string.Join(" ", "publish", projectPath, arguments, implicitArguments);
+            return Result.Failure<IContainer>(error);
+        }
 
-                return Command.Execute("dotnet", finalArguments)
-                    .Map(_ => (IContainer)new DirectoryContainer(outputDir));
-            });
+logger.Execute(log =>
+            log.Debug(
+                "Published project {ProjectPath} to {OutputDirectory}",
+                request.ProjectPath,
+                publishResult.Value.OutputDirectory));
+
+        return Result.Success<IContainer>(publishResult.Value.Container);
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)
@@ -80,7 +96,7 @@ public class Dotnet : IDotnet
                             ["PackageReleaseNotes"] = releaseNotes
                         };
 
-                        return Command.Execute("dotnet", finalArguments, null, env)
+                        return Command.Execute("dotnet", finalArguments, null!, env)
                             .Map(_ => (IContainer)new DirectoryContainer(outputDir));
                     }))
             .Map(container => container.ResourcesRecursive())

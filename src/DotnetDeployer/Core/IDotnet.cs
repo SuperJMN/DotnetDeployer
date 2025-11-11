@@ -1,8 +1,10 @@
+using DotnetPackaging.Publish;
+
 namespace DotnetDeployer.Core;
 
 public interface IDotnet
 {
-    public Task<Result<IContainer>> Publish(string projectPath, string arguments = "");
+    Task<Result<IContainer>> Publish(ProjectPublishRequest request);
     Task<Result> Push(string packagePath, string apiKey);
     Task<Result<INamedByteSource>> Pack(string projectPath, string version);
 }

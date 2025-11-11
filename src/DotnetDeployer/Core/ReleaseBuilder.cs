@@ -160,7 +160,7 @@ public class ReleaseBuilder(Context context)
         var solutionDirectory = global::System.IO.Path.GetDirectoryName(solutionPath) ?? throw new ArgumentException("Invalid solution path", nameof(solutionPath));
         var projects = ParseSolutionProjects(solutionPath).ToList();
 
-        context.Logger.Information("Parsed {Count} projects from solution", projects.Count);
+context.Logger.WithTag("Discovery").Debug("Parsed {Count} projects from solution", projects.Count);
 
         var builder = WithVersion(version);
 
@@ -168,45 +168,45 @@ public class ReleaseBuilder(Context context)
         var desktop = projects.FirstOrDefault(p => p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
         if (desktop != default)
         {
-            context.Logger.Information("Found Desktop project: {ProjectPath}", desktop.Path);
+context.Logger.WithTag("Discovery").Debug("Found Desktop project: {ProjectPath}", desktop.Path);
             builder = builder.ForWindows(desktop.Path)
                                .ForLinux(desktop.Path)
                                .ForMacOs(desktop.Path);
         }
         else
         {
-            context.Logger.Warn("Desktop project not found in solution");
+context.Logger.WithTag("Discovery").Debug("Desktop project not found in solution");
         }
 
         // Browser (WebAssembly)
         var browser = projects.FirstOrDefault(p => p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
         if (browser != default)
         {
-            context.Logger.Information("Found Browser project: {ProjectPath}", browser.Path);
+context.Logger.WithTag("Discovery").Debug("Found Browser project: {ProjectPath}", browser.Path);
             builder = builder.ForWebAssembly(browser.Path);
         }
         else
         {
-            context.Logger.Warn("Browser project not found in solution");
+context.Logger.WithTag("Discovery").Debug("Browser project not found in solution");
         }
 
         // Android
         var android = projects.FirstOrDefault(p => p.Name.EndsWith(".Android", StringComparison.OrdinalIgnoreCase));
         if (android != default && androidOptions != null)
         {
-            context.Logger.Information("Found Android project: {ProjectPath}", android.Path);
+context.Logger.WithTag("Discovery").Debug("Found Android project: {ProjectPath}", android.Path);
             builder = builder.ForAndroid(android.Path, androidOptions);
         }
         else if (android != default)
         {
-            context.Logger.Warn("Android project found but no Android options provided: {ProjectPath}", android.Path);
+context.Logger.WithTag("Discovery").Debug("Android project found but no Android options provided: {ProjectPath}", android.Path);
         }
         else
         {
-            context.Logger.Warn("Android project not found in solution");
+context.Logger.WithTag("Discovery").Debug("Android project not found in solution");
         }
 
-        context.Logger.Information("Project discovery completed");
+context.Logger.WithTag("Discovery").Debug("Project discovery completed");
         return builder;
     }
 

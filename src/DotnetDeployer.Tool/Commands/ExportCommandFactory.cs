@@ -205,11 +205,13 @@ sealed class ExportCommandFactory
             var androidAppVersionExplicit = context.ParseResult.FindResultFor(androidAppVersionOption) != null;
 
             var projects = projectReader.ReadProjects(solution).ToList();
-            Log.Information("[Discovery] Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
+            Log.ForContext("TagsSuffix", " [Discovery]")
+                .Debug("Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
             var prefix = context.ParseResult.GetValueForOption(prefixOption);
             prefix = string.IsNullOrWhiteSpace(prefix) ? IoPath.GetFileNameWithoutExtension(solution.Name) : prefix;
-            Log.Information("[Discovery] Using prefix: {Prefix}", prefix);
+            Log.ForContext("TagsSuffix", " [Discovery]")
+                .Debug("Using prefix: {Prefix}", prefix);
 
             var desktop = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
             var browser = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
@@ -226,20 +228,26 @@ sealed class ExportCommandFactory
 
             if (desktop != default)
             {
-                Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
+                Log.ForContext("TagsSuffix", " [Discovery]")
+                    .Debug("Found Desktop project: {Project}", desktop.Path);
                 if (platformSet.Contains("windows"))
                 {
-                    Log.Information("[Discovery] Adding Windows platform for {Project}", desktop.Path);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Adding Windows platform for {Project}", desktop.Path);
                     builder = builder.ForWindows(desktop.Path);
                 }
+
                 if (platformSet.Contains("linux"))
                 {
-                    Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Adding Linux platform for {Project}", desktop.Path);
                     builder = builder.ForLinux(desktop.Path);
                 }
+
                 if (platformSet.Contains("macos"))
                 {
-                    Log.Information("[Discovery] Adding macOS platform for {Project}", desktop.Path);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Adding macOS platform for {Project}", desktop.Path);
                     builder = builder.ForMacOs(desktop.Path);
                 }
             }
@@ -247,35 +255,41 @@ sealed class ExportCommandFactory
             {
                 if (desktopPrefixes.Any())
                 {
-                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
                 }
                 else
                 {
-                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
                 }
             }
 
             if (browser != default && platformSet.Contains("wasm"))
             {
-                Log.Information("[Discovery] Found Browser project: {Project}. Adding WebAssembly platform.", browser.Path);
+                Log.ForContext("TagsSuffix", " [Discovery]")
+                    .Debug("Found Browser project: {Project}. Adding WebAssembly platform.", browser.Path);
                 builder = builder.ForWebAssembly(browser.Path);
             }
             else if (browser == default && platformSet.Contains("wasm"))
             {
                 if (browserPrefixes.Any())
                 {
-                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", browserPrefixes));
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Browser project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", browserPrefixes));
                 }
                 else
                 {
-                    Log.Warning("[Discovery] Browser project not found with prefix {Prefix}. No Browser projects found in solution.", prefix);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Browser project not found with prefix {Prefix}. No Browser projects found in solution.", prefix);
                 }
             }
 
             if (android != default && platformSet.Contains("android") &&
                 keystoreBase64 != null && keyAlias != null && keyPass != null && storePass != null)
             {
-                Log.Information("[Discovery] Found Android project: {Project}. Android packaging will be configured.", android.Path);
+                Log.ForContext("TagsSuffix", " [Discovery]")
+                    .Debug("Found Android project: {Project}. Android packaging will be configured.", android.Path);
                 var resolvedAppId = GitHubReleaseCommandFactory.ResolveAndroidAppId(appId!, appIdExplicit, android.Path, "owner", packageName!);
 
                 var resolvedAppVersion = androidAppVersionExplicit
@@ -284,11 +298,13 @@ sealed class ExportCommandFactory
 
                 if (androidAppVersionExplicit)
                 {
-                    Log.Information("[Android] Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
+                    Log.ForContext("TagsSuffix", " [Android]")
+                        .Debug("Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
                 }
                 else
                 {
-                    Log.Information("[Android] Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
+                    Log.ForContext("TagsSuffix", " [Android]")
+                        .Debug("Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
                 }
 
                 var displayVersion = androidDisplayVersion ?? version!;
@@ -311,17 +327,20 @@ sealed class ExportCommandFactory
             }
             else if (android != default && platformSet.Contains("android"))
             {
-                Log.Warning("[Discovery] Android project found but Android signing options were not provided. Skipping Android packaging.");
+                Log.ForContext("TagsSuffix", " [Discovery]")
+                    .Debug("Android project found but Android signing options were not provided. Skipping Android packaging.");
             }
             else if (android == default && platformSet.Contains("android"))
             {
                 if (androidPrefixes.Any())
                 {
-                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
                 }
                 else
                 {
-                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
+                    Log.ForContext("TagsSuffix", " [Discovery]")
+                        .Debug("Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
                 }
             }
 
@@ -333,21 +352,29 @@ sealed class ExportCommandFactory
                 return;
             }
 
-            var artifactsResult = await deployer.BuildArtifacts(releaseConfigResult.Value);
-            if (artifactsResult.IsFailure)
-            {
-                Log.Error("Failed to build artifacts: {Error}", artifactsResult.Error);
-                context.ExitCode = 1;
-                return;
-            }
+            var outDir = output.FullName;
+            var exportLogger = Log.ForContext("Platform", "Export");
+            var streamedWriteResult = await deployer.BuildArtifacts(
+                releaseConfigResult.Value,
+                async resource =>
+                {
+                    var target = IoPath.Combine(outDir, resource.Name);
+                    exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
+                    var res = await resource.WriteTo(target);
+                    if (res.IsSuccess)
+                    {
+                        exportLogger.Information("Wrote {File}", resource.Name);
+                    }
+                    else
+                    {
+                        Log.Error("Failed writing {File}: {Error}", resource.Name, res.Error);
+                    }
+                    return res;
+                });
 
-            var writeResult = await artifactsResult.Value
-                .Select(resource => resource.WriteTo(IoPath.Combine(output.FullName, resource.Name)))
-                .CombineSequentially();
-
-            if (writeResult.IsFailure)
+            if (streamedWriteResult.IsFailure)
             {
-                Log.Error("Failed to write artifacts: {Error}", writeResult.Error);
+                Log.Error("Failed to build or write artifacts: {Error}", streamedWriteResult.Error);
                 context.ExitCode = 1;
                 return;
             }
@@ -364,7 +391,8 @@ sealed class ExportCommandFactory
                 }
             }
 
-            Log.Information("Artifacts exported successfully to {Dir}", output.FullName);
+            var exportLogger2 = Log.ForContext("Platform", "Export");
+            exportLogger2.Information("Artifacts exported successfully to {Dir}", output.FullName);
             context.ExitCode = 0;
         });
 
