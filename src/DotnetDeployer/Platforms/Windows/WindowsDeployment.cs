@@ -6,6 +6,7 @@ using DotnetPackaging;
 using DotnetPackaging.Msix;
 using DotnetPackaging.Msix.Core.Manifest;
 using DotnetPackaging.AppImage.Core;
+using DotnetPackaging.Publish;
 using Zafiro.CSharpFunctionalExtensions;
 
 namespace DotnetDeployer.Platforms.Windows;
@@ -43,13 +44,13 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         }
 
         var icon = iconResult.Value;
-        var args = CreateArgs(architecture, deploymentOptions, icon);
+        var request = CreateRequest(architecture, deploymentOptions, icon);
         icon.Tap(value => publishLogger.Execute(log => log.Information("Using icon '{IconPath}' for Windows packaging", value.Path)));
         var baseName = $"{deploymentOptions.PackageName}-{deploymentOptions.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
 
         try
         {
-            var publishResult = await dotnet.Publish(projectPath, args);
+            var publishResult = await dotnet.Publish(request);
             if (publishResult.IsFailure)
             {
                 return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
@@ -131,28 +132,28 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         }
     }
 
-    private static string CreateArgs(Architecture architecture, DeploymentOptions deploymentOptions, Maybe<WindowsIcon> icon)
+    private ProjectPublishRequest CreateRequest(Architecture architecture, DeploymentOptions deploymentOptions, Maybe<WindowsIcon> icon)
     {
-        IEnumerable<string[]> options =
-        [
-            ["configuration", "Release"],
-            ["self-contained", "true"],
-            ["runtime", WindowsArchitecture[architecture].Runtime]
-        ];
-
-        var properties = new List<string[]>
+        var properties = new Dictionary<string, string>
         {
-            new[] { "PublishSingleFile", "true" },
-            new[] { "Version", deploymentOptions.Version },
-            new[] { "IncludeNativeLibrariesForSelfExtract", "true" },
-            new[] { "IncludeAllContentForSelfExtract", "true" },
-            new[] { "DebugType", "embedded" },
-            new[] { "Version", deploymentOptions.Version }
+            ["PublishSingleFile"] = "true",
+            ["Version"] = deploymentOptions.Version,
+            ["IncludeNativeLibrariesForSelfExtract"] = "true",
+            ["IncludeAllContentForSelfExtract"] = "true",
+            ["DebugType"] = "embedded"
         };
 
-        icon.Execute(candidate => properties.Add(new[] { "ApplicationIcon", candidate.Path }));
+        icon.Execute(candidate => properties["ApplicationIcon"] = candidate.Path);
 
-        return ArgumentsParser.Parse(options, properties);
+        return new ProjectPublishRequest(projectPath.Value)
+        {
+            Rid = Maybe<string>.From(WindowsArchitecture[architecture].Runtime),
+            SelfContained = true,
+            Configuration = "Release",
+            SingleFile = true,
+            Trimmed = false,
+            MsBuildProperties = properties
+        };
     }
 
     private Result<INamedByteSource> CreateMsixResource(

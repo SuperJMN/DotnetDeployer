@@ -9,6 +9,7 @@ using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Flatpak;
 using DotnetPackaging.Rpm;
 using DotnetPackaging.Rpm.Builder;
+using DotnetPackaging.Publish;
 using Zafiro.DivineBytes;
 using Zafiro.CSharpFunctionalExtensions;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
@@ -45,16 +46,15 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
         publishLogger.Execute(log => log.Information("Publishing Linux packages for {Architecture}", architecture));
 
-        var publishOptions = new[]
+        var request = new ProjectPublishRequest(projectPath)
         {
-            new[] { "configuration", "Release" },
-            new[] { "runtime", LinuxArchitecture[architecture].Runtime },
-            new[] { "self-contained", "true" }
+            Rid = Maybe<string>.From(LinuxArchitecture[architecture].Runtime),
+            SelfContained = true,
+            Configuration = "Release",
+            MsBuildProperties = new Dictionary<string, string>()
         };
 
-        var arguments = ArgumentsParser.Parse(publishOptions, []);
-
-        return dotnet.Publish(projectPath, arguments)
+        return dotnet.Publish(request)
             .Bind(container => BuildArtifacts(container, architecture));
     }
 

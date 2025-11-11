@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.AppImage.Core;
+using DotnetPackaging.Publish;
 using Zafiro.CSharpFunctionalExtensions;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
 using DpArch = DotnetPackaging.Architecture;
@@ -35,17 +37,16 @@ private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(
         var publishLogger = logger.ForPackaging("macOS", "Publish", archLabel);
         var dmgLogger = logger.ForPackaging("macOS", "DMG", archLabel);
 
-        var publishArgs = ArgumentsParser.Parse(
-            new[]
-            {
-                new[] { "configuration", "Release" },
-                new[] { "runtime", MacArchitecture[architecture].Runtime },
-                new[] { "self-contained", "true" }
-            },
-            Array.Empty<string[]>());
+        var request = new ProjectPublishRequest(projectPath)
+        {
+            Rid = Maybe<string>.From(MacArchitecture[architecture].Runtime),
+            SelfContained = true,
+            Configuration = "Release",
+            MsBuildProperties = new Dictionary<string, string>()
+        };
 
         publishLogger.Execute(log => log.Information("Publishing macOS packages for {Architecture}", architecture));
-        var publishResult = await dotnet.Publish(projectPath, publishArgs);
+        var publishResult = await dotnet.Publish(request);
         if (publishResult.IsFailure)
         {
             return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();

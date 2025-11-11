@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Reactive.Linq;
 using DotnetDeployer.Core;
+using DotnetPackaging.Publish;
 using Zafiro.Mixins;
 using File = System.IO.File;
 
@@ -24,8 +26,8 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                     return await androidSdkPathResult
                         .Bind(async androidSdkPath =>
                         {
-                            var args = CreateArgs(options, tempKeystore.FilePath, androidSdkPath);
-                            var publishResult = await dotnet.Publish(projectPath, args);
+                            var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
+                            var publishResult = await dotnet.Publish(request);
                             return publishResult.Map(AndroidPackages);
                         });
                 }
@@ -117,7 +119,10 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                 var originalName = global::System.IO.Path.GetFileNameWithoutExtension(resource.Name);
                 var dashIndex = originalName.LastIndexOf('-');
                 var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
-                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{suffix}{extension}";
+                var sanitizedSuffix = requiresSignedSuffix
+                    ? suffix.Replace("-Signed", string.Empty, StringComparison.OrdinalIgnoreCase)
+                    : suffix;
+                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{sanitizedSuffix}{extension}";
                 
                 var archLabel = DetectAndroidArch(originalName);
                 var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
@@ -130,24 +135,28 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         return renamed;
     }
 
-    private static string CreateArgs(DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)
+    private static ProjectPublishRequest CreateRequest(Path projectPath, DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)
     {
-        var properties = new[]
+        var properties = new Dictionary<string, string>
         {
-            new[] { "ApplicationVersion", deploymentOptions.ApplicationVersion.ToString() },
-            new[] { "ApplicationDisplayVersion", deploymentOptions.ApplicationDisplayVersion },
-            new[] { "AndroidKeyStore", "true" },
-            new[] { "AndroidSigningKeyStore", keyStorePath },
-            new[] { "AndroidSigningKeyAlias", deploymentOptions.SigningKeyAlias },
-            new[] { "AndroidSigningStorePass", deploymentOptions.SigningStorePass },
-            new[] { "AndroidSigningKeyPass", deploymentOptions.SigningKeyPass },
-            new[] { "AndroidSdkDirectory", androidSdkPath },
-            new[] { "AndroidSignV1", "true" },
-            new[] { "AndroidSignV2", "true" },
-            new[] { "AndroidPackageFormats", deploymentOptions.PackageFormat.ToMsBuildValue() },
+            ["ApplicationVersion"] = deploymentOptions.ApplicationVersion.ToString(),
+            ["ApplicationDisplayVersion"] = deploymentOptions.ApplicationDisplayVersion,
+            ["AndroidKeyStore"] = "true",
+            ["AndroidSigningKeyStore"] = keyStorePath,
+            ["AndroidSigningKeyAlias"] = deploymentOptions.SigningKeyAlias,
+            ["AndroidSigningStorePass"] = deploymentOptions.SigningStorePass,
+            ["AndroidSigningKeyPass"] = deploymentOptions.SigningKeyPass,
+            ["AndroidSdkDirectory"] = androidSdkPath,
+            ["AndroidSignV1"] = "true",
+            ["AndroidSignV2"] = "true",
+            ["AndroidPackageFormats"] = deploymentOptions.PackageFormat.ToMsBuildValue(),
         };
 
-        return ArgumentsParser.Parse([["configuration", "Release"]], properties);
+        return new ProjectPublishRequest(projectPath.Value)
+        {
+            Configuration = "Release",
+            MsBuildProperties = properties
+        };
     }
 
     public class DeploymentOptions

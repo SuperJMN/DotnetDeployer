@@ -2,6 +2,7 @@ using System.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Windows;
 using FluentAssertions;
+using DotnetPackaging.Publish;
 
 namespace DotnetDeployer.Tests;
 
@@ -33,8 +34,11 @@ public class WindowsDeploymentTests
         var result = await deployment.Create();
 
         result.Should().Succeed();
-        dotnet.Arguments.Should().NotBeEmpty();
-        dotnet.Arguments.Should().AllSatisfy(argument => argument.Should().Contain("ApplicationIcon"));
+        dotnet.Requests.Should().NotBeEmpty();
+        dotnet.Requests
+            .Select(request => request.MsBuildProperties)
+            .Should()
+            .AllSatisfy(properties => properties.Should().ContainKey("ApplicationIcon"));
         var artifactNames = result.Value.Select(resource => resource.Name).ToList();
         artifactNames.Should().HaveCount(4);
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.exe");
@@ -45,11 +49,11 @@ public class WindowsDeploymentTests
 
     private sealed class RecordingDotnet(Result<IContainer> publishResult) : IDotnet
     {
-        public List<string> Arguments { get; } = new();
+        public List<ProjectPublishRequest> Requests { get; } = new();
 
-        public Task<Result<IContainer>> Publish(string projectPath, string arguments = "")
+        public Task<Result<IContainer>> Publish(ProjectPublishRequest request)
         {
-            Arguments.Add(arguments);
+            Requests.Add(request);
             return Task.FromResult(publishResult);
         }
 

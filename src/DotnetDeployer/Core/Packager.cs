@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Linux;
 using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Platforms.Windows;
 using DotnetDeployer.Platforms.Mac;
+using DotnetPackaging.Publish;
 
 namespace DotnetDeployer.Core;
 
@@ -46,7 +48,13 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
     {
         var platformLogger = logger.ForPlatform("Wasm");
         var platformDotnet = new Dotnet(((Dotnet)dotnet).Command, platformLogger);
-        return platformDotnet.Publish(projectPath)
+        var request = new ProjectPublishRequest(projectPath)
+        {
+            Configuration = "Release",
+            MsBuildProperties = new Dictionary<string, string>()
+        };
+
+        return platformDotnet.Publish(request)
             .Bind(WasmApp.Create);
     }
 }
