@@ -1,151 +1,89 @@
-# WARP.md
+# AGENTS
 
-This file provides guidance to WARP (warp.dev) when working with code in this repository.
+Guía operativa y de estilo para trabajar con este repositorio usando agentes.
 
-## Contexto del repositorio
+Precedencia de reglas
+- Las reglas se aplican en orden de precedencia creciente: las que aparecen más tarde prevalecen sobre las anteriores.
+- Las reglas de proyecto (asociadas a rutas concretas) tienen prioridad sobre reglas personales.
+- Entre reglas de proyecto, las de subdirectorios prevalecen sobre las del directorio padre.
 
-Solución .NET con tres proyectos:
-- src/DotnetDeployer: biblioteca principal con la lógica de empaquetado, publicación y orquestación.
-- src/DotnetDeployer.Tool: CLI (System.CommandLine) que expone comandos de publicación de NuGet y creación de releases de GitHub.
-- test/DotnetDeployer.Tests: pruebas (xUnit). Algunas pruebas de integración requieren rutas externas y credenciales; filtra si quieres ejecutar solo unitarias.
-- El proyecto se basa en el código de la biblioteca DotnetPackaging para crear la mayoría de los paquetes, excepto el Android APK. Para saber cómo funciona la herramienta, puedes investigar el código fuente, que está en la carpeta padre de este repositorio, usualmente en /mnt/fast/Repos/DotnetPackaging.
+## Comunicación y formato
+- Conversaciones y asistencia: en español.
+- Código, mensajes de commit, comentarios de código y resúmenes de PR: en inglés.
+- PR: usar texto sin escapar en asunto y cuerpo.
 
-Gestión centralizada de versiones de paquetes en src/Directory.Packages.props. TargetFramework: net8.0 (librería y tool); tests usan net9.0.
+## Terminal y ejecución
+- No cerrar la terminal ni ejecutar comandos que finalicen la sesión.
+- Evitar comandos interactivos salvo que sea estrictamente necesario.
+- Extremar cuidado con comillas simples y dobles en los comandos.
 
-## Comandos habituales
+## Despliegue y CI
 
-- Restaurar y compilar toda la solución
-  - dotnet build DotnetDeployer.sln -c Release
+- Logs de despliegue: incluir sistema operativo, tipo de paquete y arquitectura. Ejemplos:
+    - “[INFO Linux AppImage X64] …”
+    - “[INFO macOS DMG X64] …”
+    - “[INFO Android ARM64] …”
+    - ◦  “[INFO Windows Installer X64] …”
+    - “[INFO Windows SFX X64] …”
+- Proyectos de librería y aplicaciones: preparar azure-pipelines.yml cuando proceda. Ver referencia en \mnt\fast\Repos\Zafiro\azure-pipelines.yml.
+- La build debe pasar correctamente antes de fusionar una PR.
 
-- Ejecutar todas las pruebas
-  - dotnet test test/DotnetDeployer.Tests -c Release
+## Lineamientos de diseño y estilo (C# / Reactive)
 
-- Ejecutar solo pruebas unitarias (excluye integración por nombre de espacio)
-  - dotnet test test/DotnetDeployer.Tests -c Release --filter "FullyQualifiedName!~Integration"
+- Preferir programación funcional y reactiva cuando no complique en exceso.
+- Validación: preferir ReactiveUI.Validations.
+- Result handling: usar CSharpFunctionalExtensions cuando sea posible.
+- Convenciones:
+    - No usar sufijo “Async” en métodos que devuelven Task.
+    - No usar guiones bajos para campos privados.
+    - Evitar eventos (salvo indicación explícita).
+    - Favorecer inmutabilidad; mutar solo lo estrictamente necesario.
+    - Evitar poner lógica en Observable.Subscribe; preferir encadenar operadores y proyecciones.
 
-- Ejecutar un test específico (ejemplos)
-  - dotnet test test/DotnetDeployer.Tests -c Release --filter "FullyQualifiedName=DotnetDeployer.Tests.ApkNamingTests.Returns_only_signed_apk_without_suffix"
-  - dotnet test test/DotnetDeployer.Tests -c Release --filter "FullyQualifiedName~ApkNamingTests"
+# Errores y notificaciones
 
-- Formateo (si tienes dotnet-format disponible)
-  - dotnet format --verify-no-changes
-  - dotnet format
+- Para flujos de Result<T> usar el operador Successes.
+- Para fallos, HandleErrorsWith() empleando INotificationService para notificar al usuario.
 
-- Ejecutar el CLI desde el código fuente
-  - dotnet run --project src/DotnetDeployer.Tool -- --help
+# Toolkit Zafiro
 
-### Uso del comando "nuget" del CLI
-Publica paquetes NuGet a partir de proyectos descubiertos en una solución (o explícitos). Variables y flags relevantes:
-- Versión: --version 1.2.3 o inferida automáticamente (GitVersion/gid describe) si omites --version.
-- API key: --api-key o variable de entorno NUGET_API_KEY.
+Es mi propio toolkit. Disponible en https://github.com/SuperJMN/Zafiro. Muchos de los métodos que no conozcas pueden formar parte de este toolkit. Tenlo en consideración.
 
-Ejemplos:
-- Usando env var para la API key (recomendado):
-  - export NUGET_API_KEY={{NUGET_API_KEY}}
-  - dotnet run --project src/DotnetDeployer.Tool -- nuget --solution DotnetDeployer.sln --version 1.2.3
+# Manejo de bytes (sin Streams imperativos)
 
-- Proyectos explícitos y solo empaquetar (sin push):
-  - dotnet run --project src/DotnetDeployer.Tool -- nuget --project src/DotnetDeployer/DotnetDeployer.csproj --version 1.2.3 --no-push
+- Usar Zafiro.DivineBytes para flujos de bytes evitables con Stream.
+- ByteSource es la abstracción observable y componible equivalente a un stream de lectura.
 
-- Descubrimiento con patrón de nombre (excluye tests/demos/samples/desktop):
-  - dotnet run --project src/DotnetDeployer.Tool -- nuget --solution path/to/YourApp.sln --name-pattern "YourApp*" --version 1.2.3
+# Refactorización guiada por responsabilidades
 
-### Uso del comando "release" del CLI
-Crea artefactos por plataforma (Windows, Linux, Android, WebAssembly) y, opcionalmente, una release en GitHub con subida de assets.
+1. Leer el código y describir primero sus responsabilidades.
+2. Enumerar cada responsabilidad como una frase nominal clara.
+3. Para cada responsabilidad, crear una clase o método con nombre específico y semántico.
+4. Extraer campos y dependencias según cada responsabilidad.
+5. Evitar variables compartidas entre responsabilidades; si aparecen, replantear los límites.
+6. No introducir patrones arbitrarios; mantener la interfaz pública estable.
+7. No eliminar logs ni validaciones existentes.
 
-### Uso del comando "export" del CLI
-Genera los artefactos por plataforma y los escribe en una carpeta indicada, sin publicar nada.
+# Repository Guidelines
 
-- Descubre proyectos en la solución igual que "release" y acepta las mismas opciones de plataformas y Android.
-- Directorio de salida: requerido con --output.
-- WASM: por defecto no exporta el sitio; puedes incluirlo con --include-wasm (se escribirá en un subdirectorio "wasm").
+## Project Structure & Module Organization
+La solución `DotnetDeployer.sln` contiene tres bloques principales: `src/DotnetDeployer` aloja la biblioteca con la lógica de empaquetado y publicación; `src/DotnetDeployer.Tool` implementa la CLI basada en System.CommandLine; `test/DotnetDeployer.Tests` agrupa las pruebas xUnit (unitarias y algunas integraciones). Artefactos temporales viven bajo `out/` y paquetes generados se depositan en `nupkg/`. Las dependencias compartidas de los proyectos se gestionan en `src/Directory.Packages.props`.
 
-Ejemplo:
-- dotnet run --project src/DotnetDeployer.Tool -- export \
-    --solution /abs/path/YourApp.sln \
-    --version 1.2.3 \
-    --package-name YourApp \
-    --app-id com.example.yourapp \
-    --app-name "Your App" \
-    --platform windows linux android wasm \
-    --android-keystore-base64 "$ANDROID_KEYSTORE_BASE64" \
-    --android-key-alias {{ANDROID_KEY_ALIAS}} \
-    --android-key-pass {{ANDROID_KEY_PASS}} \
-    --android-store-pass {{ANDROID_STORE_PASS}} \
-    --include-wasm \
-    --output /path/to/out
+## Build, Test, and Development Commands
+- `dotnet build DotnetDeployer.sln -c Release`: restaura, compila y valida dependencias para toda la solución.
+- `dotnet test test/DotnetDeployer.Tests -c Release`: ejecuta la batería completa de pruebas.
+- `dotnet test test/DotnetDeployer.Tests -c Release --filter "FullyQualifiedName!~Integration"`: limita la ejecución a pruebas unitarias cuando las integraciones requieren credenciales.
+- `dotnet format` / `dotnet format --verify-no-changes`: aplica y verifica el formato estándar de C#.
+- `dotnet run --project src/DotnetDeployer.Tool -- --help`: explora los comandos disponibles de la CLI.
 
-- Autodescubre proyectos en la solución según sufijos: .Desktop (Windows/Linux), .Browser (WASM), .Android (Android). Puedes guiar con --prefix.
-- Token GitHub: --github-token o env var GITHUB_TOKEN. Owner/repo inferidos de "git remote origin" si no se pasan --owner y --repository.
-- --no-publish genera artefactos sin crear la release (alias deprecado: --dry-run). Con --no-publish no se requiere token de GitHub ni owner/repository.
-- Android: requiere firma. Pasa el keystore en Base64 y credenciales; si no das --android-app-version, se deriva de la semver.
+## Coding Style & Naming Conventions
+Usa C# 12 con indentación de 4 espacios, expresiones y patrones cuando mantengan la legibilidad. Prioriza el enfoque funcional soportado por `CSharpFunctionalExtensions` (`Result`, `Maybe`) y evita sufijos `Async` en métodos que devuelven `Task`. Los nombres de proyectos siguen el patrón `<Producto>.<Plataforma>` (Desktop/Browser/Android). Los mensajes de log usan Serilog y deben ser descriptivos. Código, comentarios y commits permanecen en inglés aun cuando la discusión se haga en español.
 
-Ejemplo completo (Windows+Linux+Android+WASM) sin publicar aún:
-- export GITHUB_TOKEN={{GITHUB_TOKEN}}
-- export ANDROID_KEYSTORE_BASE64={{ANDROID_KEYSTORE_B64}}
-- dotnet run --project src/DotnetDeployer.Tool -- release \
-    --solution /abs/path/YourApp.sln \
-    --version 1.2.3 \
-    --package-name YourApp \
-    --app-id com.example.yourapp \
-    --app-name "Your App" \
-    --platform windows linux android wasm \
-    --android-keystore-base64 "$ANDROID_KEYSTORE_BASE64" \
-    --android-key-alias {{ANDROID_KEY_ALIAS}} \
-    --android-key-pass {{ANDROID_KEY_PASS}} \
-    --android-store-pass {{ANDROID_STORE_PASS}} \
-    --no-publish
+## Testing Guidelines
+Las pruebas residen en `DotnetDeployer.Tests`, dirigidas por xUnit targeting `net9.0`. Crea clases con sufijo `Tests` y métodos descriptivos en PascalCase. Distingue integraciones mediante el espacio de nombres `Integration` para habilitar filtrado. Añade pruebas unitarias cuando introduzcas comportamiento nuevo y reutiliza fixtures existentes para escenarios de publicación y empaquetado. Ejecuta la suite completa antes de abrir un PR si tocas lógica de `Packager`, `Publisher` o `ReleaseBuilder`.
 
-Para publicar de verdad, elimina --no-publish y opcionalmente define --tag y --release-name. Si omites --version, se intenta inferir con GitVersion (fallback a git describe).
+## Commit & Pull Request Guidelines
+Sigue mensajes cortos, en imperativo y en inglés (por ejemplo, `Add selectable Android package formats`). Referencia issues con `#` cuando aplique. En los PR explica el objetivo, detalla impactos en empaquetado o despliegue, enlaza builds relevantes y adjunta capturas para cambios visibles en CLI. Indica cómo probaste la funcionalidad (`dotnet test`, ejecuciones de la herramienta) y señala cualquier deuda técnica pendiente.
 
-## Arquitectura (alto nivel)
-
-- Deployer (src/DotnetDeployer/Deployer.cs)
-  - Punto de entrada de alto nivel para: empaquetar para plataformas y crear releases de GitHub. Usa:
-    - Context: agrupa IDotnet (wrapper de dotnet publish/pack/push), ICommand (ejecución de procesos), ILogger y IHttpClientFactory.
-    - Packager: delega la creación de artefactos por plataforma.
-    - Publisher: publica paquetes NuGet y despliega sitios WASM a GitHub Pages.
-  - Expone CreateRelease() que devuelve un ReleaseBuilder y métodos conveniencia (CreateGitHubRelease, CreateGitHubReleaseForAvalonia).
-
-- Packager (src/DotnetDeployer/Core/Packager.cs)
-  - Windows: WindowsDeployment -> genera .exe self-contained y .msix por arquitectura (x64, arm64). Nombres: {PackageName}-{Version}-windows-{arch}.exe/.msix
-  - Linux: LinuxDeployment -> publica y empaqueta como AppImage, Flatpak y RPM ({PackageName}-{Version}-linux-{arch}.[appimage|flatpak|rpm])
-  - Android: AndroidDeployment -> publica APKs, filtra los firmados que contienen ApplicationId y los renombra a {PackageName}-{DisplayVersion}-android[-sufijo].apk (evita duplicados).
-  - WASM: publica proyecto y extrae wwwroot como sitio (WasmApp) para despliegue (no se adjunta por defecto como asset de release).
-
-- Publisher (src/DotnetDeployer/Core/Publisher.cs)
-  - NuGet: escribe temporalmente el .nupkg y hace dotnet nuget push con --skip-duplicate.
-  - GitHub Pages: clona rama, copia contenidos de WasmApp (añade .nojekyll), commit y push con autor/committer configurados.
-
-- Servicios GitHub (src/DotnetDeployer/Services/GitHub)
-  - GitHubReleaseUsingGitHubApi: usa Octokit para crear la release y subir assets. El cuerpo de la release incluye commit y mensaje (via GitInfo) para trazabilidad.
-
-- CLI (src/DotnetDeployer.Tool/Program.cs)
-  - Comandos:
-    - nuget: descubre proyectos packeables en una .sln (excluye tests/demos/samples/desktop), calcula versión si falta, empaqueta y opcionalmente hace push.
-    - release: descubre proyectos por sufijo (.Desktop/.Browser/.Android), resuelve owner/repo desde git, deriva ApplicationVersion Android desde semver si no se pasa explícito y permite saltar publicación.
-  - Resolución de solución: si no se pasa --solution, busca *.sln hacia arriba en el árbol.
-  - Reglas de Android: si --app-id no se pasó, intenta leer <ApplicationId> del .csproj Android; si falta, construye uno de fallback (io.{owner}.{packageName}) saneado.
-
-- Utilidades y contratos
-  - IDotnet/Dotnet: abstracción de operaciones dotnet (publish/pack/push), añade metadatos (commit y release notes) en pack.
-  - ReleaseBuilder/ReleaseConfiguration/ReleasePackagingStrategy: builder fluido para preparar qué plataformas empaquetar y con qué opciones, y estrategia para ejecutarlas y recolectar INamedByteSource.
-  - ArgumentsParser: construye cadenas de argumentos y propiedades MSBuild (-p:Prop=Val) de forma segura.
-
-## Notas de uso (credenciales y seguridad)
-
-- Prefiere variables de entorno para secretos (no las imprimas):
-  - NUGET_API_KEY para publicación a NuGet.
-  - GITHUB_TOKEN para crear releases en GitHub.
-  - Para Android: pasa el keystore como Base64 (ANDROID_KEYSTORE_BASE64 en los ejemplos), y las contraseñas/alias como variables.
-- Si ves secretos redactados en prompts, sustituye por placeholders {{NOMBRE_SECRETO}} en los comandos y no intentes leer su valor.
-
-## Reglas del proyecto para agentes
-
-- Conversaciones e instrucciones: en Español.
-- Código, comentarios de código, mensajes de commit y resúmenes de PR: en Inglés.
-- Preferencias de estilo (aplicables al evolucionar el código aquí):
-  - Usar CSharpFunctionalExtensions; mantener un enfoque funcional cuando sea práctico.
-  - Preferir programación reactiva si no complica en exceso.
-  - No usar el sufijo Async en métodos que devuelven Task.
-- Contexto externo: este repo proporciona el tool "dotnetdeployer". En repos como Zafiro.Avalonia, prioriza este tool frente a Nuke Build para empaquetado/publicación.
+## Security & Configuration Tips
+Nunca expongas secretos en texto plano. Usa variables como `NUGET_API_KEY`, `GITHUB_TOKEN`, `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASS` y `ANDROID_STORE_PASS`. Prefiere rutas absolutas al invocar `--solution` y evita subir archivos generados en `out/` o `nupkg/`.
