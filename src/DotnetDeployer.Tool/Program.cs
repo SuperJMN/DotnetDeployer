@@ -12,6 +12,7 @@ static class Program
     {
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} {Platform}] {Message:lj}{NewLine}{Exception}")
+            .MinimumLevel.Information()
             .CreateLogger();
 
         var services = new CommandServices();
