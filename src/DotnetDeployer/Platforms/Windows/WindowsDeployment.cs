@@ -76,14 +76,6 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             };
             sfxLogger.Execute(log => log.Information("Built SFX executable {File}", $"{baseName}-sfx.exe"));
 
-            // Materialize container to a temp directory for installer stub packaging
-            var publishCopyDir = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-pubcopy-{Guid.NewGuid():N}");
-            var writeResult = await directory.WriteTo(publishCopyDir);
-            if (writeResult.IsFailure)
-            {
-                return Result.Failure<IEnumerable<INamedByteSource>>($"Failed to copy publish output: {writeResult.Error}");
-            }
-
             // Create MSIX
             var msixLogger = logger.ForPackaging("Windows", "MSIX", archLabel);
             var msixResult = CreateMsixResource(directory, executable, architecture, deploymentOptions, baseName, msixLogger);
@@ -107,7 +99,10 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
                 };
 
                 var svc = new DotnetPackaging.Exe.ExePackagingService();
-                var buildResult = await svc.BuildFromDirectory(new DirectoryInfo(publishCopyDir), new FileInfo(setupTemp), options, deploymentOptions.PackageName, WindowsArchitecture[architecture].Runtime, null);
+                var projectFile = new FileInfo(projectPath.Value);
+                var runtimeIdentifier = WindowsArchitecture[architecture].Runtime;
+                var outputFile = new FileInfo(setupTemp);
+                var buildResult = await svc.BuildFromProject(projectFile, runtimeIdentifier, true, "Release", true, false, outputFile, options, deploymentOptions.PackageName, null);
                 if (buildResult.IsFailure)
                 {
                     installerLogger.Execute(log => log.Warning("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
@@ -121,11 +116,10 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             }
             finally
             {
-                try 
-                { 
-                    if (System.IO.Directory.Exists(publishCopyDir)) System.IO.Directory.Delete(publishCopyDir, true);
-                    if (File.Exists(setupTemp)) File.Delete(setupTemp); 
-                } 
+                try
+                {
+                    if (File.Exists(setupTemp)) File.Delete(setupTemp);
+                }
                 catch { /* ignore */ }
             }
 
