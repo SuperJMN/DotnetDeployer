@@ -267,11 +267,13 @@ sealed class GitHubReleaseCommandFactory
             }
 
             var projects = projectReader.ReadProjects(solution).ToList();
-            Log.Information("[Discovery] Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
             var prefix = context.ParseResult.GetValueForOption(prefixOption);
             prefix = string.IsNullOrWhiteSpace(prefix) ? IoPath.GetFileNameWithoutExtension(solution.Name) : prefix;
-            Log.Information("[Discovery] Using prefix: {Prefix}", prefix);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Using prefix: {Prefix}", prefix);
 
             var desktop = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
             var android = projects.FirstOrDefault(p => p.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && p.Name.EndsWith(".Android", StringComparison.OrdinalIgnoreCase));
@@ -286,20 +288,24 @@ sealed class GitHubReleaseCommandFactory
 
             if (desktop != default)
             {
-                Log.Information("[Discovery] Found Desktop project: {Project}", desktop.Path);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Found Desktop project: {Project}", desktop.Path);
                 if (platformSet.Contains("windows"))
                 {
-                    Log.Information("[Discovery] Adding Windows platform for {Project}", desktop.Path);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Adding Windows platform for {Project}", desktop.Path);
                     builder = builder.ForWindows(desktop.Path);
                 }
                 if (platformSet.Contains("linux"))
                 {
-                    Log.Information("[Discovery] Adding Linux platform for {Project}", desktop.Path);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Adding Linux platform for {Project}", desktop.Path);
                     builder = builder.ForLinux(desktop.Path);
                 }
                 if (platformSet.Contains("macos"))
                 {
-                    Log.Information("[Discovery] Adding macOS platform for {Project}", desktop.Path);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Adding macOS platform for {Project}", desktop.Path);
                     builder = builder.ForMacOs(desktop.Path);
                 }
             }
@@ -307,11 +313,13 @@ sealed class GitHubReleaseCommandFactory
             {
                 if (desktopPrefixes.Any())
                 {
-                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Desktop project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", desktopPrefixes));
                 }
                 else
                 {
-                    Log.Warning("[Discovery] Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Desktop project not found with prefix {Prefix}. No Desktop projects found in solution.", prefix);
                 }
             }
 
@@ -321,10 +329,12 @@ sealed class GitHubReleaseCommandFactory
                 context.ParseResult.GetValueForOption(androidKeyPassOption) is { } keyPass &&
                 context.ParseResult.GetValueForOption(androidStorePassOption) is { } storePass)
             {
-                Log.Information("[Discovery] Found Android project: {Project}. Android packaging will be configured.", android.Path);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Found Android project: {Project}. Android packaging will be configured.", android.Path);
                 var resolvedAppId = ResolveAndroidAppId(appId, appIdExplicit, android.Path, owner, packageName!);
 
-                Log.Information("[Resolver] PackageName: {PackageName}; ApplicationId: {ApplicationId}", packageName, resolvedAppId);
+Log.ForContext("TagsSuffix", " [Resolver]")
+   .Debug("PackageName: {PackageName}; ApplicationId: {ApplicationId}", packageName, resolvedAppId);
 
                 var androidAppVersion = context.ParseResult.GetValueForOption(androidAppVersionOption);
                 var androidAppVersionExplicit = context.ParseResult.FindResultFor(androidAppVersionOption) != null;
@@ -334,11 +344,13 @@ sealed class GitHubReleaseCommandFactory
 
                 if (androidAppVersionExplicit)
                 {
-                    Log.Information("[Android] Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
+Log.ForContext("TagsSuffix", " [Android]")
+   .Debug("Using explicit ApplicationVersion {ApplicationVersion}", resolvedAppVersion);
                 }
                 else
                 {
-                    Log.Information("[Android] Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
+Log.ForContext("TagsSuffix", " [Android]")
+   .Debug("Generated ApplicationVersion {ApplicationVersion} from version {Version}", resolvedAppVersion, version);
                 }
 
                 var androidDisplayVersion = context.ParseResult.GetValueForOption(androidDisplayVersionOption) ?? version!;
@@ -361,17 +373,20 @@ sealed class GitHubReleaseCommandFactory
             }
             else if (android != default && platformSet.Contains("android"))
             {
-                Log.Warning("[Discovery] Android project found but Android signing options were not provided. Skipping Android packaging.");
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Android project found but Android signing options were not provided. Skipping Android packaging.");
             }
             else if (android == default)
             {
                 if (androidPrefixes.Any())
                 {
-                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Android project not found with prefix {Prefix}. Available prefixes: {Candidates}", prefix, string.Join(", ", androidPrefixes));
                 }
                 else
                 {
-                    Log.Warning("[Discovery] Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Android project not found with prefix {Prefix}. No Android projects found in solution.", prefix);
                 }
             }
 
@@ -380,7 +395,8 @@ sealed class GitHubReleaseCommandFactory
                 var hint = desktopPrefixes.FirstOrDefault() ?? androidPrefixes.FirstOrDefault();
                 if (!string.IsNullOrWhiteSpace(hint))
                 {
-                    Log.Information("[Discovery] Hint: Try using --prefix {Hint}", hint);
+Log.ForContext("TagsSuffix", " [Discovery]")
+   .Debug("Hint: Try using --prefix {Hint}", hint);
                 }
             }
 

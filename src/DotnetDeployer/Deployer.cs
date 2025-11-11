@@ -154,6 +154,12 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         return packagingStrategy.PackageForPlatforms(releaseConfig);
     }
 
+    // Stream artifacts to a consumer as soon as they are produced
+    public Task<Result> BuildArtifacts(ReleaseConfiguration releaseConfig, Func<INamedByteSource, Task<Result>> onArtifact)
+    {
+        return packagingStrategy.PackageForPlatforms(releaseConfig, onArtifact);
+    }
+
     // Expose WASM site creation
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
     {

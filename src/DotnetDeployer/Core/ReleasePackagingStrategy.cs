@@ -113,6 +113,101 @@ public class ReleasePackagingStrategy
         return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
     }
 
+    // Stream artifacts to a consumer as soon as each platform finishes packaging
+    public async Task<Result> PackageForPlatforms(ReleaseConfiguration configuration, Func<INamedByteSource, Task<Result>> onArtifact)
+    {
+        // Windows packages
+        if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
+        {
+            var windowsConfig = configuration.WindowsConfig;
+            if (windowsConfig == null)
+            {
+                return Result.Failure("Windows deployment options are required for Windows packaging");
+            }
+
+            var windowsResult = await packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options);
+            if (windowsResult.IsFailure)
+            {
+                return Result.Failure(windowsResult.Error);
+            }
+
+            foreach (var file in windowsResult.Value)
+            {
+                var writeRes = await onArtifact(file);
+                if (writeRes.IsFailure) return writeRes;
+            }
+        }
+
+        // Linux packages
+        if (configuration.Platforms.HasFlag(TargetPlatform.Linux))
+        {
+            var linuxConfig = configuration.LinuxConfig;
+            if (linuxConfig == null)
+            {
+                return Result.Failure("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
+            }
+
+            var linuxResult = await packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata);
+            if (linuxResult.IsFailure)
+            {
+                return Result.Failure(linuxResult.Error);
+            }
+
+            foreach (var file in linuxResult.Value)
+            {
+                var writeRes = await onArtifact(file);
+                if (writeRes.IsFailure) return writeRes;
+            }
+        }
+
+        // macOS packages
+        if (configuration.Platforms.HasFlag(TargetPlatform.MacOs))
+        {
+            var macConfig = configuration.MacOsConfig;
+            if (macConfig == null)
+            {
+                return Result.Failure("macOS configuration is required for macOS packaging");
+            }
+
+            var macResult = await packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version);
+            if (macResult.IsFailure)
+            {
+                return Result.Failure(macResult.Error);
+            }
+
+            foreach (var file in macResult.Value)
+            {
+                var writeRes = await onArtifact(file);
+                if (writeRes.IsFailure) return writeRes;
+            }
+        }
+
+        // Android packages
+        if (configuration.Platforms.HasFlag(TargetPlatform.Android))
+        {
+            var androidConfig = configuration.AndroidConfig;
+            if (androidConfig == null)
+            {
+                return Result.Failure("Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
+            }
+
+            var androidResult = await packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options);
+            if (androidResult.IsFailure)
+            {
+                return Result.Failure(androidResult.Error);
+            }
+
+            foreach (var file in androidResult.Value)
+            {
+                var writeRes = await onArtifact(file);
+                if (writeRes.IsFailure) return writeRes;
+            }
+        }
+
+        // WebAssembly site is handled by callers explicitly (not a file artifact here)
+        return Result.Success();
+    }
+
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
     {
         return packager.CreateWasmSite(projectPath);

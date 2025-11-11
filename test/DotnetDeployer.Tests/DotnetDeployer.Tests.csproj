@@ -20,6 +20,7 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <PackageReference Include="FluentAssertions" Version="7.2.0" />
         <PackageReference Include="CSharpFunctionalExtensions.FluentAssertions" Version="3.6.0" />
         <PackageReference Include="Zafiro.DivineBytes" Version="41.0.3" />
     </ItemGroup>
@@ -34,8 +35,9 @@
       </None>
     </ItemGroup>
 
-    <ItemGroup>
+  <ItemGroup>
       <ProjectReference Include="..\..\src\DotnetDeployer\DotnetDeployer.csproj" />
+      <ProjectReference Include="..\..\src\DotnetDeployer.Tool\DotnetDeployer.Tool.csproj" />
     </ItemGroup>
 
 </Project>

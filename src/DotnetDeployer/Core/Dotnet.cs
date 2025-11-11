@@ -21,8 +21,8 @@ public class Dotnet : IDotnet
 
     public async Task<Result<IContainer>> Publish(ProjectPublishRequest request)
     {
-        logger.Execute(log =>
-            log.Information(
+logger.Execute(log =>
+            log.Debug(
                 "Publishing project {ProjectPath} with runtime {Runtime} (SelfContained: {SelfContained}, SingleFile: {SingleFile})",
                 request.ProjectPath,
                 request.Rid.Match(value => value, () => "default"),
@@ -42,8 +42,8 @@ public class Dotnet : IDotnet
             return Result.Failure<IContainer>(error);
         }
 
-        logger.Execute(log =>
-            log.Information(
+logger.Execute(log =>
+            log.Debug(
                 "Published project {ProjectPath} to {OutputDirectory}",
                 request.ProjectPath,
                 publishResult.Value.OutputDirectory));

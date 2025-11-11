@@ -34,7 +34,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
             .Map(icon => Maybe<WindowsIcon>.From(icon))
             .OnFailureCompensate(error =>
             {
-                logger.Execute(log => log.Warning("Failed to prepare Windows icon for {Project}: {Error}", projectFile, error));
+logger.Execute(log => log.Debug("Failed to prepare Windows icon for {Project}: {Error}", projectFile, error));
                 return Result.Success(Maybe<WindowsIcon>.None);
             });
     }
@@ -81,7 +81,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
         }
         catch (Exception ex)
         {
-            logger.Execute(log => log.Warning(ex, "Unable to parse project file {ProjectFile} while looking for ApplicationIcon", projectFile));
+logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} while looking for ApplicationIcon", projectFile));
         }
 
         return Maybe<IconReference>.None;
@@ -208,11 +208,11 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
 
         if (fallback.HasNoValue)
         {
-            logger.Execute(log => log.Warning("Skipping SVG icon at {SvgPath} because no raster fallback was found", svgPath));
+logger.Execute(log => log.Debug("Skipping SVG icon at {SvgPath} because no raster fallback was found", svgPath));
             return Result.Failure<WindowsIcon>("Unable to prepare a Windows icon from SVG without a PNG fallback");
         }
 
-        logger.Execute(log => log.Information("Using raster fallback {Fallback} for SVG icon {SvgPath}", fallback.Value, svgPath));
+logger.Execute(log => log.Debug("Using raster fallback {Fallback} for SVG icon {SvgPath}", fallback.Value, svgPath));
         return CreateIconFromPng(fallback.Value);
     }
 

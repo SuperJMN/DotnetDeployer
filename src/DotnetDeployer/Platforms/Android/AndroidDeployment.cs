@@ -66,14 +66,14 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         {
             if (allPackages.Count == 0)
             {
-                log.Information("No {Extension} files found in publish output.", extension);
+log.Debug("No {Extension} files found in publish output.", extension);
             }
             else
             {
-                log.Information("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
+log.Debug("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
                 foreach (var apk in allPackages)
                 {
-                    log.Information(" - {Apk}", apk.Name);
+log.Debug(" - {Apk}", apk.Name);
                 }
             }
         });
@@ -100,15 +100,15 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
         androidLogger.Execute(log =>
         {
-            log.Information("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
+log.Debug("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
             foreach (var apk in selectedPackages)
             {
-                log.Information(" * {Apk}", apk.Name);
+log.Debug(" * {Apk}", apk.Name);
             }
 
             if (selectedPackages.Count == 0)
             {
-                log.Warning("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
+log.Debug("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
             }
         });
 
@@ -126,7 +126,9 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                 
                 var archLabel = DetectAndroidArch(originalName);
                 var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
-                renLogger.Execute(log => log.Information("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+                renLogger.Execute(log => log.Information("Creating {File}", finalName));
+                renLogger.Execute(log => log.Information("Created {File}", finalName));
                 return (INamedByteSource)new Resource(finalName, resource);
             })
             .GroupBy(res => res.Name)
