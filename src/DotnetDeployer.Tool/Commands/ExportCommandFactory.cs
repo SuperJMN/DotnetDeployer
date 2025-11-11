@@ -8,6 +8,7 @@ using CSharpFunctionalExtensions;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Tool.Commands.GitHub;
 using DotnetDeployer.Tool.Services;
+using DotnetPackaging;
 using Serilog;
 using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.DivineBytes;
@@ -354,27 +355,23 @@ sealed class ExportCommandFactory
 
             var outDir = output.FullName;
             var exportLogger = Log.ForContext("Platform", "Export");
-            var streamedWriteResult = await deployer.BuildArtifacts(
-                releaseConfigResult.Value,
-                async resource =>
-                {
-                    var target = IoPath.Combine(outDir, resource.Name);
-                    exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
-                    var res = await resource.WriteTo(target);
-                    if (res.IsSuccess)
-                    {
-                        exportLogger.Information("Wrote {File}", resource.Name);
-                    }
-                    else
-                    {
-                        Log.Error("Failed writing {File}: {Error}", resource.Name, res.Error);
-                    }
-                    return res;
-                });
-
-            if (streamedWriteResult.IsFailure)
+            Task<Result> WriteArtifact(INamedByteSource resource)
             {
-                Log.Error("Failed to build or write artifacts: {Error}", streamedWriteResult.Error);
+                var target = IoPath.Combine(outDir, resource.Name);
+                exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
+                return resource.WriteTo(target)
+                    .Tap(() => exportLogger.Information("Wrote {File}", resource.Name))
+                    .TapError(error => Log.Error("Failed writing {File}: {Error}", resource.Name, error));
+            }
+
+            var writeResult = await deployer.BuildArtifacts(releaseConfigResult.Value)
+                .Bind(files => files
+                    .Select(WriteArtifact)
+                    .CombineSequentially());
+
+            if (writeResult.IsFailure)
+            {
+                Log.Error("Failed to build or write artifacts: {Error}", writeResult.Error);
                 context.ExitCode = 1;
                 return;
             }
