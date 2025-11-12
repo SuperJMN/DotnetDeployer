@@ -22,6 +22,19 @@ static class Program
                     && !string.Equals((sv.Value as string) ?? string.Empty, "General", StringComparison.OrdinalIgnoreCase))
                 .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
             )
+            // Also show general Information messages (startup/shutdown, etc.)
+            .WriteTo.Logger(lc => lc
+                .Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Information
+                    && e.Properties.TryGetValue("Platform", out var p)
+                    && p is ScalarValue sv
+                    && string.Equals((sv.Value as string) ?? string.Empty, "General", StringComparison.OrdinalIgnoreCase))
+                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
+            )
+            // Always show warnings
+            .WriteTo.Logger(lc => lc
+                .Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Warning)
+                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
+            )
             // Always show errors
             .WriteTo.Logger(lc => lc
                 .Filter.ByIncludingOnly(e => e.Level >= LogEventLevel.Error)
@@ -29,12 +42,14 @@ static class Program
             )
             .CreateLogger();
 
+        Log.Logger.Information("DotnetDeployer Execution started");
+        
         var services = new CommandServices();
         var root = new RootCommandFactory(services).Create();
 
         var exitCode = await root.InvokeAsync(args);
 
-        Log.Logger.Information("DeployerTool Execution completed with exit code {ExitCode}", exitCode);
+        Log.Logger.Information("DotnetDeployer Execution completed with exit code {ExitCode}", exitCode);
 
         return exitCode;
     }
