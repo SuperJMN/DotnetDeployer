@@ -1,56 +1,82 @@
+using System;
 using System.CommandLine;
+using System.Linq;
 using System.Threading.Tasks;
 using DotnetDeployer.Tool.Commands;
 using DotnetDeployer.Tool.Services;
 using Serilog;
+using Serilog.Context;
+using Serilog.Core;
 using Serilog.Events;
 
 namespace DotnetDeployer.Tool;
 
 static class Program
 {
+    private const string VerboseEnvVar = "DOTNETDEPLOYER_VERBOSE";
+
     public static async Task<int> Main(string[] args)
     {
+        var verboseRequested = IsVerboseRequested(args);
+        SetVerboseEnvironment(verboseRequested);
+
+        var levelSwitch = new LoggingLevelSwitch(verboseRequested ? LogEventLevel.Debug : LogEventLevel.Information);
+
         Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.ControlledBy(levelSwitch)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Tool", "DotnetDeployer.Tool")
             .Enrich.WithProperty("Platform", "General")
-            .MinimumLevel.Debug()
-            // Show only packaging summary lines at Information (non-General Platform)
-            .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Information
-                    && e.Properties.TryGetValue("Platform", out var p)
-                    && p is ScalarValue sv
-                    && !string.Equals((sv.Value as string) ?? string.Empty, "General", StringComparison.OrdinalIgnoreCase))
-                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
-            )
-            // Also show general Information messages (startup/shutdown, etc.)
-            .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Information
-                    && e.Properties.TryGetValue("Platform", out var p)
-                    && p is ScalarValue sv
-                    && string.Equals((sv.Value as string) ?? string.Empty, "General", StringComparison.OrdinalIgnoreCase))
-                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
-            )
-            // Always show warnings
-            .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Warning)
-                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
-            )
-            // Always show errors
-            .WriteTo.Logger(lc => lc
-                .Filter.ByIncludingOnly(e => e.Level >= LogEventLevel.Error)
-                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u}] [{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
-            )
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} {Tool}/{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
-        Log.Logger.Information("DotnetDeployer Execution started");
+        using var _ = LogContext.PushProperty("ExecutionId", Guid.NewGuid());
+
+        Log.Information("DotnetDeployer execution started (verbose={Verbose})", verboseRequested);
         
-        var services = new CommandServices();
+        var services = new CommandServices(Log.Logger);
         var root = new RootCommandFactory(services).Create();
 
         var exitCode = await root.InvokeAsync(args);
 
-        Log.Logger.Information("DotnetDeployer Execution completed with exit code {ExitCode}", exitCode);
+        Log.Information("DotnetDeployer execution completed with exit code {ExitCode}", exitCode);
 
         return exitCode;
+    }
+
+    private static bool IsVerboseRequested(string[] args)
+    {
+        if (EnvironmentVariableEnabled())
+        {
+            return true;
+        }
+
+        return args.Any(IsVerboseToken);
+    }
+
+    private static bool EnvironmentVariableEnabled()
+    {
+        var value = Environment.GetEnvironmentVariable(VerboseEnvVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsVerboseToken(string token)
+    {
+        return string.Equals(token, "--verbose", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(token, "-v", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(token, "--debug", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(token, "-d", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetVerboseEnvironment(bool verbose)
+    {
+        Environment.SetEnvironmentVariable(VerboseEnvVar, verbose ? "1" : "0");
     }
 }

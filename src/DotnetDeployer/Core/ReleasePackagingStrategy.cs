@@ -1,19 +1,24 @@
 namespace DotnetDeployer.Core;
 
+using System.Linq;
 using DotnetDeployer.Platforms.Wasm;
+using Serilog;
 
 public class ReleasePackagingStrategy
 {
     private readonly Packager packager;
+    private readonly Maybe<ILogger> logger;
 
-    public ReleasePackagingStrategy(Packager packager)
+    public ReleasePackagingStrategy(Packager packager, Maybe<ILogger> logger)
     {
         this.packager = packager;
+        this.logger = logger;
     }
 
     public async Task<Result<IEnumerable<INamedByteSource>>> PackageForPlatforms(ReleaseConfiguration configuration)
     {
         var allFiles = new List<INamedByteSource>();
+        logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
         
         // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
@@ -25,13 +30,16 @@ public class ReleasePackagingStrategy
                     "Windows deployment options are required for Windows packaging");
             }
 
+            logger.Execute(l => l.Information("Packaging Windows artifacts from {Project}", windowsConfig.ProjectPath));
             var windowsResult = await packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options);
             if (windowsResult.IsFailure)
             {
                 return Result.Failure<IEnumerable<INamedByteSource>>(windowsResult.Error);
             }
 
-            allFiles.AddRange(windowsResult.Value);
+            var windowsArtifacts = windowsResult.Value.ToList();
+            allFiles.AddRange(windowsArtifacts);
+            logger.Execute(l => l.Information("Windows packaging completed ({Count} artifacts)", windowsArtifacts.Count));
         }
 
         // Linux packages
@@ -44,13 +52,16 @@ public class ReleasePackagingStrategy
                     "Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
             }
 
+            logger.Execute(l => l.Information("Packaging Linux artifacts from {Project}", linuxConfig.ProjectPath));
             var linuxResult = await packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata);
             if (linuxResult.IsFailure)
             {
                 return Result.Failure<IEnumerable<INamedByteSource>>(linuxResult.Error);
             }
 
-            allFiles.AddRange(linuxResult.Value);
+            var linuxArtifacts = linuxResult.Value.ToList();
+            allFiles.AddRange(linuxArtifacts);
+            logger.Execute(l => l.Information("Linux packaging completed ({Count} artifacts)", linuxArtifacts.Count));
         }
 
         // macOS packages
@@ -63,13 +74,16 @@ public class ReleasePackagingStrategy
                     "macOS configuration is required for macOS packaging");
             }
 
+            logger.Execute(l => l.Information("Packaging macOS artifacts from {Project}", macConfig.ProjectPath));
             var macResult = await packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version);
             if (macResult.IsFailure)
             {
                 return Result.Failure<IEnumerable<INamedByteSource>>(macResult.Error);
             }
 
-            allFiles.AddRange(macResult.Value);
+            var macArtifacts = macResult.Value.ToList();
+            allFiles.AddRange(macArtifacts);
+            logger.Execute(l => l.Information("macOS packaging completed ({Count} artifacts)", macArtifacts.Count));
         }
 
         // Android packages
@@ -82,13 +96,16 @@ public class ReleasePackagingStrategy
                     "Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
             }
 
+            logger.Execute(l => l.Information("Packaging Android artifacts from {Project}", androidConfig.ProjectPath));
             var androidResult = await packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options);
             if (androidResult.IsFailure)
             {
                 return Result.Failure<IEnumerable<INamedByteSource>>(androidResult.Error);
             }
 
-            allFiles.AddRange(androidResult.Value);
+            var androidArtifacts = androidResult.Value.ToList();
+            allFiles.AddRange(androidArtifacts);
+            logger.Execute(l => l.Information("Android packaging completed ({Count} artifacts)", androidArtifacts.Count));
         }
 
         // WebAssembly site
@@ -101,6 +118,7 @@ public class ReleasePackagingStrategy
                     "WebAssembly configuration is required for WebAssembly packaging");
             }
 
+            logger.Execute(l => l.Information("Building WebAssembly site for {Project}", wasmConfig.ProjectPath));
             var wasmResult = await packager.CreateWasmSite(wasmConfig.ProjectPath);
             if (wasmResult.IsFailure)
             {
@@ -110,6 +128,7 @@ public class ReleasePackagingStrategy
             // Note: WasmApp is typically deployed to GitHub Pages or similar, not included as release asset
         }
 
+        logger.Execute(l => l.Information("Packaging completed. {ArtifactCount} artifact(s) ready", allFiles.Count));
         return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
     }
 

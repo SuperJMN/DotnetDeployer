@@ -12,7 +12,7 @@ namespace DotnetDeployer;
 
 public class Deployer(Context context, Packager packager, Publisher publisher)
 {
-    private readonly ReleasePackagingStrategy packagingStrategy = new(packager);
+    private readonly ReleasePackagingStrategy packagingStrategy = new(packager, context.Logger);
     public Context Context { get; } = context;
 
     public static Deployer Instance
@@ -37,12 +37,13 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             return Result.Failure("One or more projects to publish are empty or null.");
         }
 
-        Context.Logger.Information("Publishing projects: {@Projects}", projectToPublish);
+        Context.Logger.Information("NuGet packaging pipeline started for {ProjectCount} project(s)", projectToPublish.Count);
+        Context.Logger.Debug("Publishing projects: {@Projects}", projectToPublish);
 
         var packagesResult = await projectToPublish
             .Select(project =>
             {
-                Context.Logger.Information("Packing {Project}", project);
+                Context.Logger.Debug("Packing {Project}", project);
                 return packager.CreateNugetPackage(project, version);
             })
             .CombineSequentially()
@@ -55,16 +56,23 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
 
         if (!push)
         {
+            Context.Logger.Information("NuGet packages created. Push skipped (--no-push)");
             return Result.Success();
         }
 
-        return await packagesResult.Value
+        var publishResult = await packagesResult.Value
             .Select(resource =>
             {
-                Context.Logger.Information("Publishing package {Resource} in NuGet.org", resource.Name);
+                Context.Logger.Debug("Publishing package {Resource} in NuGet.org", resource.Name);
                 return publisher.PushNugetPackage(resource, nuGetApiKey);
             })
             .CombineSequentially();
+        if (publishResult.IsSuccess)
+        {
+            Context.Logger.Information("NuGet publishing completed successfully");
+        }
+
+        return publishResult;
     }
 
     public async Task<Result> CreateGitHubRelease(IList<INamedByteSource> files, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData)
@@ -85,17 +93,20 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         releaseBody = $"{releaseBody}\n\nCommit: {commitInfo.Commit}\n{commitInfo.Message}";
 
         Context.Logger.Information(
-            "Creating GitHub release with files: {@Files} for owner {Owner}, repository {Repository}",
-            files.Select(f => f.Name),
+            "Creating GitHub release {ReleaseName} ({Tag}) for {Owner}/{Repository}",
+            releaseName,
+            tag,
             repositoryConfig.OwnerName,
             repositoryConfig.RepositoryName);
-        Context.Logger.Information(
-            "Release details - Name: {ReleaseName}, Tag: {Tag}, Draft: {IsDraft}, Prerelease: {IsPrerelease}, Body: {Body}",
+        Context.Logger.Debug("Release metadata {@Metadata}", new
+        {
             releaseName,
             tag,
             isDraft,
             isPrerelease,
-            releaseBody);
+            releaseBodyLength = releaseBody.Length,
+            assets = files.Select(f => f.Name).ToList()
+        });
 
         var gitHubRelease = new GitHubReleaseUsingGitHubApi(Context, files, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
         return await gitHubRelease.CreateRelease(tag, releaseName, releaseBody, isDraft, isPrerelease)
@@ -111,17 +122,8 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             {
                 if (dryRun)
                 {
-                    Context.Logger.Information(
-                        "Dry run enabled. Release details - Name: {ReleaseName}, Tag: {Tag}, Draft: {IsDraft}, Prerelease: {IsPrerelease}, Body: {Body}",
-                        releaseData.ReleaseName,
-                        releaseData.Tag,
-                        releaseData.IsDraft,
-                        releaseData.IsPrerelease,
-                        releaseData.ReleaseBody);
-                    foreach (var file in files)
-                    {
-                        Context.Logger.Information("Would publish {File}", file.Name);
-                    }
+                    Context.Logger.Information("Dry run enabled for release {ReleaseName} ({Tag})", releaseData.ReleaseName, releaseData.Tag);
+                    Context.Logger.Debug("Dry run artifacts: {@Files}", files.Select(file => file.Name));
                     return Result.Success();
                 }
 
@@ -130,6 +132,11 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
                 if (releaseResult.IsFailure)
                 {
                     return releaseResult;
+                }
+
+                if (releaseResult.IsSuccess)
+                {
+                    Context.Logger.Information("GitHub release {ReleaseName} published successfully", resolved.ReleaseName);
                 }
 
                 return releaseResult;
