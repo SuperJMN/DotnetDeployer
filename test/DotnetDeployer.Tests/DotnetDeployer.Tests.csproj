@@ -22,7 +22,6 @@
         </PackageReference>
         <PackageReference Include="FluentAssertions" Version="7.2.0" />
         <PackageReference Include="CSharpFunctionalExtensions.FluentAssertions" Version="3.6.0" />
-        <PackageReference Include="Zafiro.DivineBytes" Version="41.0.3" />
     </ItemGroup>
 
     <ItemGroup>

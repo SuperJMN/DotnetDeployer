@@ -8,7 +8,6 @@
     
     <ItemGroup>
         <PackageReference Include="Octokit" />
-        <PackageReference Include="Zafiro.DivineBytes" />
         <PackageReference Include="DotnetPackaging" />
         <PackageReference Include="DotnetPackaging.AppImage" />
         <PackageReference Include="DotnetPackaging.Flatpak" />
