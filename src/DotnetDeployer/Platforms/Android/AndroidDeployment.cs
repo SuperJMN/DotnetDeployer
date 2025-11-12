@@ -158,7 +158,8 @@ renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to
         {
             Configuration = "Release",
             Rid = Maybe<string>.None,
-            MsBuildProperties = properties
+            MsBuildProperties = properties,
+            SelfContained = false,
         };
     }
 
