@@ -1,3 +1,5 @@
+using Serilog;
+
 namespace DotnetDeployer.Tool.Services;
 
 /// <summary>
@@ -5,10 +7,10 @@ namespace DotnetDeployer.Tool.Services;
 /// </summary>
 sealed class CommandServices
 {
-    public CommandServices()
+    public CommandServices(ILogger logger)
     {
         SolutionLocator = new SolutionLocator();
-        WorkloadRestorer = new WorkloadRestorer();
+        WorkloadRestorer = new WorkloadRestorer(logger.ForContext("Component", "WorkloadRestorer"));
         VersionResolver = new VersionResolver();
         BuildNumberUpdater = new BuildNumberUpdater();
         SolutionProjectReader = new SolutionProjectReader();

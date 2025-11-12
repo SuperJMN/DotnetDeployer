@@ -23,6 +23,8 @@ sealed class RootCommandFactory
     public RootCommand Create()
     {
         var root = new RootCommand("Deployment tool for DotnetPackaging");
+        var verboseOption = new Option<bool>(new[] { "--verbose", "-v", "--debug", "-d" }, "Enable verbose logging");
+        root.AddGlobalOption(verboseOption);
         root.AddCommand(nugetCommandFactory.Create());
         root.AddCommand(gitHubCommandFactory.Create());
         root.AddCommand(exportCommandFactory.Create());

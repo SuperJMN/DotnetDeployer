@@ -13,13 +13,20 @@ namespace DotnetDeployer.Tool.Services;
 /// </summary>
 sealed class WorkloadRestorer
 {
+    private readonly ILogger logger;
+
+    public WorkloadRestorer(ILogger logger)
+    {
+        this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
     public async Task<Result> Restore(FileInfo solution)
     {
         var workingDirectory = solution.DirectoryName ?? Environment.CurrentDirectory;
-        Log.Information("Ensuring workloads are restored for solution {Solution}. This can take up to 10 minutes and might require elevation.", solution.FullName);
+        logger.Information("Ensuring workloads are restored for solution {Solution}", solution.FullName);
 
-        var logger = Maybe<ILogger>.From(Log.Logger);
-        var command = new ZafiroCommand(logger);
+        var commandLogger = Maybe<ILogger>.From(logger);
+        var command = new ZafiroCommand(commandLogger);
 
         var arguments = $"workload restore \"{solution.FullName}\"";
         var result = await command.Execute("dotnet", arguments, workingDirectory);
@@ -28,7 +35,7 @@ sealed class WorkloadRestorer
             var message = string.IsNullOrWhiteSpace(result.Error)
                 ? "dotnet workload restore failed"
                 : result.Error;
-            Log.Debug("Workload restore failed, continuing: {Message}", message);
+            logger.Debug("Workload restore failed, continuing: {Message}", message);
             return Result.Success();
         }
 

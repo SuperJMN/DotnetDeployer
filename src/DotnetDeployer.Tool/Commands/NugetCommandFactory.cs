@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Tool.Services;
 using Serilog;
+using Serilog.Context;
 
 namespace DotnetDeployer.Tool.Commands;
 
@@ -68,6 +70,9 @@ sealed class NugetCommandFactory
 
         command.SetHandler(async context =>
         {
+            using var scope = LogContext.PushProperty("Command", "nuget");
+            var stopwatch = Stopwatch.StartNew();
+
             var solutionResult = solutionLocator.Locate(context.ParseResult.GetValueForOption(solutionOption));
             if (solutionResult.IsFailure)
             {
@@ -77,6 +82,7 @@ sealed class NugetCommandFactory
             }
 
             var solution = solutionResult.Value;
+            Log.Information("NuGet publishing started for solution {Solution}", solution.FullName);
             var restoreResult = await workloadRestorer.Restore(solution);
             if (restoreResult.IsFailure)
             {
@@ -116,13 +122,26 @@ sealed class NugetCommandFactory
             }
 
             var explicitProjects = context.ParseResult.GetValueForOption(projectsOption) ?? Enumerable.Empty<FileInfo>();
-            var projectList = explicitProjects.Any()
+            var projectCandidates = explicitProjects.Any()
                 ? explicitProjects.Select(p => p.FullName)
                 : packableProjectDiscovery.Discover(solution, pattern).Select(file => file.FullName);
+            var projectList = projectCandidates.ToList();
+
+            Log.Information("Publishing {Count} NuGet package(s)", projectList.Count);
 
             context.ExitCode = await Deployer.Instance
-                .PublishNugetPackages(projectList.ToList(), version, apiKey, push: !noPush)
+                .PublishNugetPackages(projectList, version, apiKey, push: !noPush)
                 .WriteResult();
+
+            stopwatch.Stop();
+            if (context.ExitCode == 0)
+            {
+                Log.Information("NuGet publishing completed successfully in {Elapsed}", stopwatch.Elapsed);
+            }
+            else
+            {
+                Log.Warning("NuGet publishing finished with errors in {Elapsed}", stopwatch.Elapsed);
+            }
         });
 
         return command;
