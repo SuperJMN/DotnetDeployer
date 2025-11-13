@@ -6,6 +6,8 @@ using DotnetPackaging;
 using DotnetPackaging.AppImage;
 using DotnetPackaging.AppImage.Core;
 using DotnetPackaging.AppImage.Metadata;
+using DotnetPackaging.Deb;
+using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using DotnetPackaging.Flatpak;
 using DotnetPackaging.Rpm;
 using DotnetPackaging.Rpm.Builder;
@@ -82,38 +84,48 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
 
         var results = new List<INamedByteSource>();
 
-var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
-appImageLogger.Execute(log => log.Information("Creating AppImage"));
-var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
-if (appImageResult.IsFailure)
-{
-    return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
-}
-results.Add(appImageResult.Value);
-appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
+        var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
+        appImageLogger.Execute(log => log.Information("Creating AppImage"));
+        var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
+        if (appImageResult.IsFailure)
+        {
+            return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
+        }
+        results.Add(appImageResult.Value);
+        appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
 
-var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
-flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
-var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
-if (flatpakResult.IsFailure)
-{
-    return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
-}
-results.Add(flatpakResult.Value);
-flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
+        var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
+        flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
+        var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
+        if (flatpakResult.IsFailure)
+        {
+            return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
+        }
+        results.Add(flatpakResult.Value);
+        flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
 
-var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
-rpmLogger.Execute(log => log.Information("Creating RPM"));
-var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
-if (rpmResult.IsFailure)
-{
-    rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
-}
-else
-{
-    results.Add(rpmResult.Value);
-    rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
-}
+        var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
+        debLogger.Execute(log => log.Information("Creating DEB"));
+        var debResult = await CreateDeb(container, architecture, $"{baseFileName}.deb", executable);
+        if (debResult.IsFailure)
+        {
+            return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
+        }
+        results.Add(debResult.Value);
+        debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
+
+        var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
+        rpmLogger.Execute(log => log.Information("Creating RPM"));
+        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
+        if (rpmResult.IsFailure)
+        {
+            rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
+        }
+        else
+        {
+            results.Add(rpmResult.Value);
+            rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
+        }
 
         return Result.Success<IEnumerable<INamedByteSource>>(results);
     }
@@ -150,6 +162,27 @@ else
         }
 
         return Result.Success<INamedByteSource>(new Resource(fileName, bundleResult.Value));
+    }
+
+    private async Task<Result<INamedByteSource>> CreateDeb(IContainer container, Architecture architecture, string fileName, INamedByteSourceWithPath executable)
+    {
+        var debResult = await DebFile.From()
+            .Container(container, metadata.PackageName)
+            .Configure(options =>
+            {
+                ApplyMetadata(options, metadata, architecture);
+                options.WithExecutableName(executable.Name);
+            })
+            .Build();
+
+        if (debResult.IsFailure)
+        {
+            return debResult.ConvertFailure<INamedByteSource>();
+        }
+
+        var data = DebArchive.DebMixin.ToData(debResult.Value);
+        var byteSource = ByteSource.FromByteObservable(data.Bytes);
+        return Result.Success<INamedByteSource>(new Resource(fileName, byteSource));
     }
 
     private async Task<Result<INamedByteSource>> CreateRpm(IContainer container, Architecture architecture, string fileName)
