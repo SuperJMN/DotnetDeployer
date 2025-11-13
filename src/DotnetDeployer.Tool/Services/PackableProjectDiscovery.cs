@@ -20,27 +20,45 @@ sealed class PackableProjectDiscovery
 
     public IEnumerable<FileInfo> Discover(FileInfo solution, string? pattern)
     {
-        var namePattern = string.IsNullOrWhiteSpace(pattern)
-            ? Path.GetFileNameWithoutExtension(solution.Name) + "*"
-            : pattern;
         var submodules = GetSubmodulePaths()
             .Select(p => p + Path.DirectorySeparatorChar)
+            .Where(s => !IsCurrentDirectoryInsideSubmodule(s))
             .ToList();
 
-        var currentDir = Environment.CurrentDirectory + Path.DirectorySeparatorChar;
-        submodules = submodules
-            .Where(s => !currentDir.StartsWith(s, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        foreach (var project in projectReader.ReadProjects(solution))
+        var eligibleProjects = FilterEligibleProjects(solution, submodules);
+        foreach (var currentPattern in BuildPatternPriority(solution, pattern))
         {
-            var lower = project.Name.ToLowerInvariant();
-            if (lower.Contains("test") || lower.Contains("demo") || lower.Contains("sample") || lower.Contains("desktop"))
+            var matches = eligibleProjects
+                .Where(project => System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(currentPattern, project.Name, ignoreCase: true))
+                .Select(project => new FileInfo(project.Path))
+                .ToList();
+
+            if (matches.Count == 0)
             {
                 continue;
             }
 
-            if (!System.IO.Enumeration.FileSystemName.MatchesSimpleExpression(namePattern, project.Name, true))
+            foreach (var match in matches)
+            {
+                yield return match;
+            }
+
+            yield break;
+        }
+    }
+
+    static bool IsCurrentDirectoryInsideSubmodule(string submodulePath)
+    {
+        var currentDir = Environment.CurrentDirectory + Path.DirectorySeparatorChar;
+        return currentDir.StartsWith(submodulePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    List<SolutionProject> FilterEligibleProjects(FileInfo solution, IReadOnlyCollection<string> submodules)
+    {
+        var projects = new List<SolutionProject>();
+        foreach (var project in projectReader.ReadProjects(solution))
+        {
+            if (ShouldSkip(project.Name))
             {
                 continue;
             }
@@ -50,17 +68,59 @@ sealed class PackableProjectDiscovery
                 continue;
             }
 
-            var fullPath = Path.GetFullPath(project.Path) + Path.DirectorySeparatorChar;
-            if (submodules.Any(s => fullPath.StartsWith(s, StringComparison.OrdinalIgnoreCase)))
+            var fullPath = Path.GetFullPath(project.Path);
+            if (IsInsideSubmodule(fullPath, submodules))
             {
                 continue;
             }
 
-            if (IsPackable(project.Path))
+            if (!IsPackable(fullPath))
             {
-                yield return new FileInfo(project.Path);
+                continue;
             }
+
+            projects.Add(new SolutionProject(project.Name, fullPath));
         }
+
+        return projects;
+    }
+
+    static bool ShouldSkip(string projectName)
+    {
+        var lower = projectName.ToLowerInvariant();
+        return lower.Contains("test", StringComparison.Ordinal)
+               || lower.Contains("demo", StringComparison.Ordinal)
+               || lower.Contains("sample", StringComparison.Ordinal)
+               || lower.Contains("desktop", StringComparison.Ordinal);
+    }
+
+    static bool IsInsideSubmodule(string projectPath, IReadOnlyCollection<string> submodules)
+    {
+        var normalized = projectPath + Path.DirectorySeparatorChar;
+        return submodules.Any(s => normalized.StartsWith(s, StringComparison.OrdinalIgnoreCase));
+    }
+
+    static IReadOnlyList<string> BuildPatternPriority(FileInfo solution, string? pattern)
+    {
+        if (!string.IsNullOrWhiteSpace(pattern))
+        {
+            return new[] { pattern };
+        }
+
+        var defaults = new List<string>
+        {
+            Path.GetFileNameWithoutExtension(solution.Name) + "*"
+        };
+
+        var directoryName = solution.Directory?.Name;
+        if (!string.IsNullOrWhiteSpace(directoryName)
+            && !string.Equals(directoryName, Path.GetFileNameWithoutExtension(solution.Name), StringComparison.OrdinalIgnoreCase))
+        {
+            defaults.Add(directoryName + "*");
+        }
+
+        defaults.Add("*");
+        return defaults;
     }
 
     static bool IsPackable(string projectPath)
