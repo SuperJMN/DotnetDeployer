@@ -10,6 +10,7 @@
         <PackageReference Include="Octokit" />
         <PackageReference Include="DotnetPackaging" />
         <PackageReference Include="DotnetPackaging.AppImage" />
+        <PackageReference Include="DotnetPackaging.Deb" />
         <PackageReference Include="DotnetPackaging.Flatpak" />
         <PackageReference Include="DotnetPackaging.Msix" />
         <PackageReference Include="DotnetPackaging.Rpm" />
