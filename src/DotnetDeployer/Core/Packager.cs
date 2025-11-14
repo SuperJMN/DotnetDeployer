@@ -51,7 +51,8 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         var request = new ProjectPublishRequest(projectPath)
         {
             Configuration = "Release",
-            MsBuildProperties = new Dictionary<string, string>()
+            MsBuildProperties = new Dictionary<string, string>(),
+            SelfContained = false,
         };
 
         return platformDotnet.Publish(request)
