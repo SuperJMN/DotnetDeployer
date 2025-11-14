@@ -52,7 +52,8 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         {
             Configuration = "Release",
             MsBuildProperties = new Dictionary<string, string>(),
-            SelfContained = false,
+            // WebAssembly apps are published as self-contained; use the browser-wasm RID.
+            Rid = Maybe<string>.From("browser-wasm"),
         };
 
         return platformDotnet.Publish(request)
