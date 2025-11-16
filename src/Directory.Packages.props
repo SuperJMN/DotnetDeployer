@@ -14,6 +14,6 @@
     <PackageVersion Include="DotnetPackaging.Deb" Version="8.0.20" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.0" />
   </ItemGroup>
 </Project>

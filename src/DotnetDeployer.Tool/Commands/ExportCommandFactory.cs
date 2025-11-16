@@ -80,10 +80,11 @@ sealed class ExportCommandFactory
             Description = "If set and wasm platform is selected, export the WASM site into a subfolder"
         };
 
-        var platformsOption = new Option<IEnumerable<string>>("--platform", () => new[] { "windows", "linux", "android", "macos", "wasm" })
+        var platformsOption = new Option<IEnumerable<string>>("--platform")
         {
             AllowMultipleArgumentsPerToken = true,
-            Description = "Platforms to package: windows, linux, android, macos, wasm"
+            Description = "Platforms to package: windows, linux, android, macos, wasm",
+            DefaultValueFactory = _ => new[] { "windows", "linux", "android", "macos", "wasm" }
         };
 
         var androidKeystoreOption = new Option<string>("--android-keystore-base64");
@@ -95,37 +96,37 @@ sealed class ExportCommandFactory
             Description = "Android ApplicationVersion (integer). If omitted, automatically generated from semantic version"
         };
         var androidDisplayVersionOption = new Option<string>("--android-app-display-version");
-        var androidPackageFormatOption = new Option<string>("--android-package-format", () => ".apk")
+        var androidPackageFormatOption = new Option<string>("--android-package-format")
         {
-            Description = "Android package format to produce (.apk or .aab). Defaults to .apk."
+            Description = "Android package format to produce (.apk or .aab). Defaults to .apk.",
+            DefaultValueFactory = _ => ".apk"
         };
-        androidPackageFormatOption.AddCompletions(".apk", ".aab");
+        androidPackageFormatOption.AcceptOnlyFromAmong(".apk", ".aab");
 
-        command.AddOption(solutionOption);
-        command.AddOption(prefixOption);
-        command.AddOption(versionOption);
-        command.AddOption(packageNameOption);
-        command.AddOption(appIdOption);
-        command.AddOption(appNameOption);
-        command.AddOption(outputOption);
-        command.AddOption(includeWasmOption);
-        command.AddOption(platformsOption);
-        command.AddOption(androidKeystoreOption);
-        command.AddOption(androidKeyAliasOption);
-        command.AddOption(androidKeyPassOption);
-        command.AddOption(androidStorePassOption);
-        command.AddOption(androidAppVersionOption);
-        command.AddOption(androidDisplayVersionOption);
-        command.AddOption(androidPackageFormatOption);
+        command.Add(solutionOption);
+        command.Add(prefixOption);
+        command.Add(versionOption);
+        command.Add(packageNameOption);
+        command.Add(appIdOption);
+        command.Add(appNameOption);
+        command.Add(outputOption);
+        command.Add(includeWasmOption);
+        command.Add(platformsOption);
+        command.Add(androidKeystoreOption);
+        command.Add(androidKeyAliasOption);
+        command.Add(androidKeyPassOption);
+        command.Add(androidStorePassOption);
+        command.Add(androidAppVersionOption);
+        command.Add(androidDisplayVersionOption);
+        command.Add(androidPackageFormatOption);
 
-        command.SetHandler(async context =>
+        command.SetAction(async parseResult =>
         {
-            var solutionResult = solutionLocator.Locate(context.ParseResult.GetValueForOption(solutionOption));
+            var solutionResult = solutionLocator.Locate(parseResult.GetValue(solutionOption));
             if (solutionResult.IsFailure)
             {
                 Log.Error(solutionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var solution = solutionResult.Value;
@@ -133,16 +134,14 @@ sealed class ExportCommandFactory
             if (restoreResult.IsFailure)
             {
                 Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
-            var output = context.ParseResult.GetValueForOption(outputOption);
+            var output = parseResult.GetValue(outputOption);
             if (output == null)
             {
                 Log.Error("--output is required");
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             if (!output.Exists)
@@ -154,26 +153,24 @@ sealed class ExportCommandFactory
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Failed to create output directory {Dir}", output.FullName);
-                    context.ExitCode = 1;
-                    return;
+                    return 1;
                 }
             }
 
-            var versionResult = await versionResolver.Resolve(context.ParseResult.GetValueForOption(versionOption), solution.Directory!);
+            var versionResult = await versionResolver.Resolve(parseResult.GetValue(versionOption), solution.Directory!);
             if (versionResult.IsFailure)
             {
                 Log.Error("Failed to obtain version using GitVersion: {Error}", versionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var version = versionResult.Value;
             buildNumberUpdater.Update(version);
 
-            var packageName = context.ParseResult.GetValueForOption(packageNameOption);
-            var appId = context.ParseResult.GetValueForOption(appIdOption);
-            var appName = context.ParseResult.GetValueForOption(appNameOption);
-            var appIdExplicit = context.ParseResult.FindResultFor(appIdOption) != null && !string.IsNullOrWhiteSpace(appId);
+            var packageName = parseResult.GetValue(packageNameOption);
+            var appId = parseResult.GetValue(appIdOption);
+            var appName = parseResult.GetValue(appNameOption);
+            var appIdExplicit = parseResult.GetResult(appIdOption) != null && !string.IsNullOrWhiteSpace(appId);
 
             if (string.IsNullOrWhiteSpace(packageName) || string.IsNullOrWhiteSpace(appName) || string.IsNullOrWhiteSpace(appId))
             {
@@ -186,30 +183,29 @@ sealed class ExportCommandFactory
                 }
             }
 
-            var packageFormatResult = androidPackageFormatParser.Parse(context.ParseResult.GetValueForOption(androidPackageFormatOption));
+            var packageFormatResult = androidPackageFormatParser.Parse(parseResult.GetValue(androidPackageFormatOption));
             if (packageFormatResult.IsFailure)
             {
                 Log.Error(packageFormatResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
-            var includeWasm = context.ParseResult.GetValueForOption(includeWasmOption);
-            var platforms = context.ParseResult.GetValueForOption(platformsOption)!;
+            var includeWasm = parseResult.GetValue(includeWasmOption);
+            var platforms = parseResult.GetValue(platformsOption)!;
             var platformSet = new HashSet<string>(platforms.Select(p => p.ToLowerInvariant()));
-            var keystoreBase64 = context.ParseResult.GetValueForOption(androidKeystoreOption);
-            var keyAlias = context.ParseResult.GetValueForOption(androidKeyAliasOption);
-            var keyPass = context.ParseResult.GetValueForOption(androidKeyPassOption);
-            var storePass = context.ParseResult.GetValueForOption(androidStorePassOption);
-            var androidAppVersion = context.ParseResult.GetValueForOption(androidAppVersionOption);
-            var androidDisplayVersion = context.ParseResult.GetValueForOption(androidDisplayVersionOption);
-            var androidAppVersionExplicit = context.ParseResult.FindResultFor(androidAppVersionOption) != null;
+            var keystoreBase64 = parseResult.GetValue(androidKeystoreOption);
+            var keyAlias = parseResult.GetValue(androidKeyAliasOption);
+            var keyPass = parseResult.GetValue(androidKeyPassOption);
+            var storePass = parseResult.GetValue(androidStorePassOption);
+            var androidAppVersion = parseResult.GetValue(androidAppVersionOption);
+            var androidDisplayVersion = parseResult.GetValue(androidDisplayVersionOption);
+            var androidAppVersionExplicit = parseResult.GetResult(androidAppVersionOption) != null;
 
             var projects = projectReader.ReadProjects(solution).ToList();
             Log.ForContext("TagsSuffix", " [Discovery]")
                 .Debug("Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
-            var prefix = context.ParseResult.GetValueForOption(prefixOption);
+            var prefix = parseResult.GetValue(prefixOption);
             prefix = string.IsNullOrWhiteSpace(prefix) ? IoPath.GetFileNameWithoutExtension(solution.Name) : prefix;
             Log.ForContext("TagsSuffix", " [Discovery]")
                 .Debug("Using prefix: {Prefix}", prefix);
@@ -349,8 +345,7 @@ sealed class ExportCommandFactory
             if (releaseConfigResult.IsFailure)
             {
                 Log.Error("Failed to build export configuration: {Error}", releaseConfigResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var outDir = output.FullName;
@@ -372,8 +367,7 @@ sealed class ExportCommandFactory
             if (writeResult.IsFailure)
             {
                 Log.Error("Failed to build or write artifacts: {Error}", writeResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             if (includeWasm && releaseConfigResult.Value.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfigResult.Value.WebAssemblyConfig != null)
@@ -383,14 +377,13 @@ sealed class ExportCommandFactory
                 if (wasmResult.IsFailure)
                 {
                     Log.Error("Failed to export WASM site: {Error}", wasmResult.Error);
-                    context.ExitCode = 1;
-                    return;
+                    return 1;
                 }
             }
 
             var exportLogger2 = Log.ForContext("Platform", "Export");
             exportLogger2.Information("Artifacts exported successfully to {Dir}", output.FullName);
-            context.ExitCode = 0;
+            return 0;
         });
 
         return command;

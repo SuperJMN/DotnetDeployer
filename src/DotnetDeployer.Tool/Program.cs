@@ -36,8 +36,8 @@ static class Program
         
         var services = new CommandServices(Log.Logger);
         var root = new RootCommandFactory(services).Create();
-
-        var exitCode = await root.InvokeAsync(args);
+        var parseResult = root.Parse(args);
+        var exitCode = await parseResult.InvokeAsync();
 
         Log.Information("DotnetDeployer execution completed with exit code {ExitCode}", exitCode);
 

@@ -45,11 +45,18 @@ sealed class GitHubPagesCommandFactory
         {
             Description = "Deployment version. If omitted GitVersion is used"
         };
-        var ownerOption = new Option<string?>("--owner", "GitHub owner used for GitHub Pages deployment. Defaults to the current repository's owner");
-        var repoOption = new Option<string?>("--repository", "GitHub repository name used for GitHub Pages deployment. Defaults to the current repository");
-        var githubTokenOption = new Option<string>("--github-token", () => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty)
+        var ownerOption = new Option<string?>("--owner")
         {
-            Description = "GitHub API token. Can be provided via GITHUB_TOKEN env var"
+            Description = "GitHub owner used for GitHub Pages deployment. Defaults to the current repository's owner"
+        };
+        var repoOption = new Option<string?>("--repository")
+        {
+            Description = "GitHub repository name used for GitHub Pages deployment. Defaults to the current repository"
+        };
+        var githubTokenOption = new Option<string>("--github-token")
+        {
+            Description = "GitHub API token. Can be provided via GITHUB_TOKEN env var",
+            DefaultValueFactory = _ => Environment.GetEnvironmentVariable("GITHUB_TOKEN") ?? string.Empty
         };
         var tokenOption = new Option<string>("--token")
         {
@@ -64,24 +71,23 @@ sealed class GitHubPagesCommandFactory
             Description = "Deprecated. Use --no-publish instead"
         };
 
-        command.AddOption(solutionOption);
-        command.AddOption(prefixOption);
-        command.AddOption(versionOption);
-        command.AddOption(ownerOption);
-        command.AddOption(repoOption);
-        command.AddOption(githubTokenOption);
-        command.AddOption(tokenOption);
-        command.AddOption(noPublishOption);
-        command.AddOption(dryRunOption);
+        command.Add(solutionOption);
+        command.Add(prefixOption);
+        command.Add(versionOption);
+        command.Add(ownerOption);
+        command.Add(repoOption);
+        command.Add(githubTokenOption);
+        command.Add(tokenOption);
+        command.Add(noPublishOption);
+        command.Add(dryRunOption);
 
-        command.SetHandler(async context =>
+        command.SetAction(async parseResult =>
         {
-            var solutionResult = solutionLocator.Locate(context.ParseResult.GetValueForOption(solutionOption));
+            var solutionResult = solutionLocator.Locate(parseResult.GetValue(solutionOption));
             if (solutionResult.IsFailure)
             {
                 Log.Error(solutionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var solution = solutionResult.Value;
@@ -89,42 +95,39 @@ sealed class GitHubPagesCommandFactory
             if (restoreResult.IsFailure)
             {
                 Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
-            var versionResult = await versionResolver.Resolve(context.ParseResult.GetValueForOption(versionOption), solution.Directory!);
+            var versionResult = await versionResolver.Resolve(parseResult.GetValue(versionOption), solution.Directory!);
             if (versionResult.IsFailure)
             {
                 Log.Error("Failed to obtain version using GitVersion: {Error}", versionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var version = versionResult.Value;
             if (!NuGet.Versioning.NuGetVersion.TryParse(version, out _))
             {
                 Log.Error("Invalid version string '{Version}'", version);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             buildNumberUpdater.Update(version);
 
-            var owner = context.ParseResult.GetValueForOption(ownerOption);
-            var repository = context.ParseResult.GetValueForOption(repoOption);
-            var githubToken = context.ParseResult.GetValueForOption(githubTokenOption) ?? string.Empty;
-            var legacyToken = context.ParseResult.GetValueForOption(tokenOption) ?? string.Empty;
-            var legacyTokenSpecified = context.ParseResult.FindResultFor(tokenOption) != null && !string.IsNullOrWhiteSpace(legacyToken);
+            var owner = parseResult.GetValue(ownerOption);
+            var repository = parseResult.GetValue(repoOption);
+            var githubToken = parseResult.GetValue(githubTokenOption) ?? string.Empty;
+            var legacyToken = parseResult.GetValue(tokenOption) ?? string.Empty;
+            var legacyTokenSpecified = parseResult.GetResult(tokenOption) != null && !string.IsNullOrWhiteSpace(legacyToken);
             if (legacyTokenSpecified)
             {
                 Log.Warning("--token is deprecated. Use --github-token instead.");
             }
             var token = string.IsNullOrWhiteSpace(githubToken) ? legacyToken : githubToken;
 
-            var noPublish = context.ParseResult.GetValueForOption(noPublishOption);
-            var dryRun = context.ParseResult.GetValueForOption(dryRunOption);
-            var dryRunSpecified = context.ParseResult.FindResultFor(dryRunOption) != null && dryRun;
+            var noPublish = parseResult.GetValue(noPublishOption);
+            var dryRun = parseResult.GetValue(dryRunOption);
+            var dryRunSpecified = parseResult.GetResult(dryRunOption) != null && dryRun;
             if (dryRunSpecified)
             {
                 Log.Warning("--dry-run is deprecated. Use --no-publish instead.");
@@ -135,7 +138,7 @@ sealed class GitHubPagesCommandFactory
 Log.ForContext("TagsSuffix", " [Discovery]")
    .Debug("Parsed {Count} projects from solution {Solution}", projects.Count, solution.FullName);
 
-            var prefix = context.ParseResult.GetValueForOption(prefixOption);
+            var prefix = parseResult.GetValue(prefixOption);
             prefix = string.IsNullOrWhiteSpace(prefix) ? Path.GetFileNameWithoutExtension(solution.Name) : prefix;
 Log.ForContext("TagsSuffix", " [Discovery]")
    .Debug("Using prefix: {Prefix}", prefix);
@@ -154,8 +157,7 @@ Log.ForContext("TagsSuffix", " [Discovery]")
                     Log.Error("[Discovery] Browser project not found with prefix {Prefix}. No Browser projects found in solution.", prefix);
                 }
 
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var deployer = Deployer.Instance;
@@ -166,13 +168,11 @@ Log.ForContext("TagsSuffix", " [Discovery]")
                 if (wasmResult.IsFailure)
                 {
                     Log.Error("Failed to build WebAssembly site: {Error}", wasmResult.Error);
-                    context.ExitCode = 1;
-                    return;
+                    return 1;
                 }
 
                 Log.Information("WebAssembly site built successfully. Skipping GitHub Pages publication (--no-publish).");
-                context.ExitCode = 0;
-                return;
+                return 0;
             }
 
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repository))
@@ -181,8 +181,7 @@ Log.ForContext("TagsSuffix", " [Discovery]")
                 if (repoResult.IsFailure)
                 {
                     Log.Error("Owner and repository must be specified or inferred from the current Git repository: {Error}", repoResult.Error);
-                    context.ExitCode = 1;
-                    return;
+                    return 1;
                 }
 
                 owner ??= repoResult.Value.Owner;
@@ -192,15 +191,16 @@ Log.ForContext("TagsSuffix", " [Discovery]")
             if (string.IsNullOrWhiteSpace(token))
             {
                 Log.Error("GitHub token must be provided with --github-token or GITHUB_TOKEN");
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var repositoryConfig = new GitHubRepositoryConfig(owner!, repository!, token);
 
-            context.ExitCode = await deployer
+            var exitCode = await deployer
                 .PublishGitHubPages(browser.Path, repositoryConfig)
                 .WriteResult();
+
+            return exitCode;
         });
 
         return command;

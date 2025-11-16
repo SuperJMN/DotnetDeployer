@@ -47,9 +47,10 @@ sealed class NugetCommandFactory
         {
             Description = "Package version. If omitted, GitVersion is used and falls back to git describe"
         };
-        var apiKeyOption = new Option<string>("--api-key", () => Environment.GetEnvironmentVariable("NUGET_API_KEY") ?? string.Empty)
+        var apiKeyOption = new Option<string>("--api-key")
         {
-            Description = "NuGet API key. Can be provided via NUGET_API_KEY env var"
+            Description = "NuGet API key. Can be provided via NUGET_API_KEY env var",
+            DefaultValueFactory = _ => Environment.GetEnvironmentVariable("NUGET_API_KEY") ?? string.Empty
         };
         var patternOption = new Option<string?>("--name-pattern")
         {
@@ -61,24 +62,23 @@ sealed class NugetCommandFactory
             Description = "Only build packages without pushing to NuGet"
         };
 
-        command.AddOption(projectsOption);
-        command.AddOption(solutionOption);
-        command.AddOption(versionOption);
-        command.AddOption(apiKeyOption);
-        command.AddOption(patternOption);
-        command.AddOption(noPushOption);
+        command.Add(projectsOption);
+        command.Add(solutionOption);
+        command.Add(versionOption);
+        command.Add(apiKeyOption);
+        command.Add(patternOption);
+        command.Add(noPushOption);
 
-        command.SetHandler(async context =>
+        command.SetAction(async parseResult =>
         {
             using var scope = LogContext.PushProperty("Command", "nuget");
             var stopwatch = Stopwatch.StartNew();
 
-            var solutionResult = solutionLocator.Locate(context.ParseResult.GetValueForOption(solutionOption));
+            var solutionResult = solutionLocator.Locate(parseResult.GetValue(solutionOption));
             if (solutionResult.IsFailure)
             {
                 Log.Error(solutionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var solution = solutionResult.Value;
@@ -87,16 +87,14 @@ sealed class NugetCommandFactory
             if (restoreResult.IsFailure)
             {
                 Log.Error("Failed to restore workloads for {Solution}: {Error}", solution.FullName, restoreResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
-            var versionResult = await versionResolver.Resolve(context.ParseResult.GetValueForOption(versionOption), solution.Directory!);
+            var versionResult = await versionResolver.Resolve(parseResult.GetValue(versionOption), solution.Directory!);
             if (versionResult.IsFailure)
             {
                 Log.Error("Failed to obtain version using GitVersion: {Error}", versionResult.Error);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             var version = versionResult.Value;
@@ -104,24 +102,22 @@ sealed class NugetCommandFactory
             if (!NuGet.Versioning.NuGetVersion.TryParse(version, out _))
             {
                 Log.Error("Invalid version string '{Version}'", version);
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
             buildNumberUpdater.Update(version);
 
-            var apiKey = context.ParseResult.GetValueForOption(apiKeyOption)!;
-            var pattern = context.ParseResult.GetValueForOption(patternOption);
-            var noPush = context.ParseResult.GetValueForOption(noPushOption);
+            var apiKey = parseResult.GetValue(apiKeyOption)!;
+            var pattern = parseResult.GetValue(patternOption);
+            var noPush = parseResult.GetValue(noPushOption);
 
             if (!noPush && string.IsNullOrWhiteSpace(apiKey))
             {
                 Log.Error("A NuGet API key must be provided with --api-key or NUGET_API_KEY");
-                context.ExitCode = 1;
-                return;
+                return 1;
             }
 
-            var explicitProjects = context.ParseResult.GetValueForOption(projectsOption) ?? Enumerable.Empty<FileInfo>();
+            var explicitProjects = parseResult.GetValue(projectsOption) ?? Enumerable.Empty<FileInfo>();
             var projectCandidates = explicitProjects.Any()
                 ? explicitProjects.Select(p => p.FullName)
                 : packableProjectDiscovery.Discover(solution, pattern).Select(file => file.FullName);
@@ -129,12 +125,12 @@ sealed class NugetCommandFactory
 
             Log.Information("Publishing {Count} NuGet package(s)", projectList.Count);
 
-            context.ExitCode = await Deployer.Instance
+            var exitCode = await Deployer.Instance
                 .PublishNugetPackages(projectList, version, apiKey, push: !noPush)
                 .WriteResult();
 
             stopwatch.Stop();
-            if (context.ExitCode == 0)
+            if (exitCode == 0)
             {
                 Log.Information("NuGet publishing completed successfully in {Elapsed}", stopwatch.Elapsed);
             }
@@ -142,6 +138,8 @@ sealed class NugetCommandFactory
             {
                 Log.Warning("NuGet publishing finished with errors in {Elapsed}", stopwatch.Elapsed);
             }
+
+            return exitCode;
         });
 
         return command;

@@ -20,8 +20,8 @@ sealed class GitHubCommandFactory
     public Command Create()
     {
         var command = new Command("github", "GitHub-related operations");
-        command.AddCommand(releaseCommandFactory.Create());
-        command.AddCommand(pagesCommandFactory.Create());
+        command.Subcommands.Add(releaseCommandFactory.Create());
+        command.Subcommands.Add(pagesCommandFactory.Create());
         return command;
     }
 }
