@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PackAsTool>true</PackAsTool>
+    <!-- Ensure the tool can run with the latest installed SDK -->
     <RollForward>LatestMajor</RollForward>
     <ToolCommandName>dotnetdeployer</ToolCommandName>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
