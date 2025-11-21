@@ -1,5 +1,6 @@
 using System;
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using System.Linq;
 using System.Threading.Tasks;
 using DotnetDeployer.Tool.Commands;
@@ -27,21 +28,16 @@ static class Program
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Tool", "DotnetDeployer.Tool")
             .Enrich.WithProperty("Platform", "General")
-            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} {Tool}/{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3} {Tool}/{Platform}]{TagsSuffix} {Message:lj}{NewLine}{Exception}", standardErrorFromLevel: LogEventLevel.Verbose)
             .CreateLogger();
 
         using var _ = LogContext.PushProperty("ExecutionId", Guid.NewGuid());
 
-        Log.Information("DotnetDeployer execution started (verbose={Verbose})", verboseRequested);
-        
         var services = new CommandServices(Log.Logger);
         var root = new RootCommandFactory(services).Create();
+        
         var parseResult = root.Parse(args);
-        var exitCode = await parseResult.InvokeAsync();
-
-        Log.Information("DotnetDeployer execution completed with exit code {ExitCode}", exitCode);
-
-        return exitCode;
+        return await parseResult.InvokeAsync();
     }
 
     private static bool IsVerboseRequested(string[] args)
