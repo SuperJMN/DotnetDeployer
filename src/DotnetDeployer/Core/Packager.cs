@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Linux;
 using DotnetDeployer.Platforms.Wasm;

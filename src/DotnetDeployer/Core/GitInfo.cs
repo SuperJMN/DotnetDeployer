@@ -1,7 +1,3 @@
-using System.IO;
-using DotnetPackaging;
-using Zafiro.Commands;
-
 namespace DotnetDeployer.Core;
 
 public static class GitInfo

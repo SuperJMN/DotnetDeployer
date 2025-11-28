@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.AppImage;
@@ -10,10 +7,7 @@ using DotnetPackaging.Deb;
 using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using DotnetPackaging.Flatpak;
 using DotnetPackaging.Rpm;
-using DotnetPackaging.Rpm.Builder;
 using DotnetPackaging.Publish;
-using Zafiro.DivineBytes;
-using Zafiro.CSharpFunctionalExtensions;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
 
 namespace DotnetDeployer.Platforms.Linux;

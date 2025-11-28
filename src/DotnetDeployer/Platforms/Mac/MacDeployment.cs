@@ -1,11 +1,5 @@
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using DotnetDeployer.Core;
-using DotnetPackaging;
-using DotnetPackaging.AppImage.Core;
 using DotnetPackaging.Publish;
-using Zafiro.CSharpFunctionalExtensions;
-using RuntimeArch = System.Runtime.InteropServices.Architecture;
 using DpArch = DotnetPackaging.Architecture;
 
 namespace DotnetDeployer.Platforms.Mac;
