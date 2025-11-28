@@ -180,8 +180,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
             return debResult.ConvertFailure<INamedByteSource>();
         }
 
-        var data = DebArchive.DebMixin.ToData(debResult.Value);
-        var byteSource = ByteSource.FromByteObservable(data.Bytes);
+        var byteSource = DebArchive.DebMixin.ToByteSource(debResult.Value);
         return Result.Success<INamedByteSource>(new Resource(fileName, byteSource));
     }
 
