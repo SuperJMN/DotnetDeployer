@@ -10,6 +10,11 @@ public static class GitInfo
                     .Map(message => new CommitInfo(commit.Trim(), message.Trim()))));
     }
 
+    public static Result<DirectoryInfo> GetRepositoryRoot(string startDirectory)
+    {
+        return FindRepositoryRoot(new DirectoryInfo(startDirectory));
+    }
+
     static Result<DirectoryInfo> FindRepositoryRoot(DirectoryInfo? start)
     {
         var current = start;

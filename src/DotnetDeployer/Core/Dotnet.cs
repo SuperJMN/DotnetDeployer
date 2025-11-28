@@ -9,11 +9,15 @@ public class Dotnet : IDotnet
     private readonly Maybe<ILogger> logger;
     private readonly System.IO.Abstractions.FileSystem filesystem = new();
     private readonly DotnetPublisher publisher = new();
+    private readonly IPackageHistoryProvider packageHistoryProvider;
+    private readonly ReleaseNotesBuilder releaseNotesBuilder;
 
-    public Dotnet(ICommand command, Maybe<ILogger> logger)
+    public Dotnet(ICommand command, Maybe<ILogger> logger, IPackageHistoryProvider? packageHistoryProvider = null)
     {
         Command = command;
         this.logger = logger;
+        this.packageHistoryProvider = packageHistoryProvider ?? new NugetPackageHistoryProvider(logger: logger);
+        releaseNotesBuilder = new ReleaseNotesBuilder(command, this.packageHistoryProvider, logger);
     }
 
     public async Task<Result<IContainer>> Publish(ProjectPublishRequest request)
@@ -73,16 +77,18 @@ logger.Execute(log =>
         var directory = global::System.IO.Path.GetDirectoryName(projectPath) ?? projectPath;
 
         return GitInfo.GetCommitInfo(directory, Command)
-            .Bind(commitInfo =>
+            .Bind(commitInfo => releaseNotesBuilder.Build(projectPath, version, commitInfo)
+                .Map(releaseNotes => (commitInfo, releaseNotes)))
+            .Bind(tuple =>
                 Result.Try(() => filesystem.Directory.CreateTempSubdirectory())
                     .Bind(outputDir =>
                     {
-                        var releaseNotes = NormalizeReleaseNotes(commitInfo.Message);
+                        var normalizedReleaseNotes = NormalizeReleaseNotes(tuple.releaseNotes);
                         var arguments = ArgumentsParser.Parse(
                             [["output", outputDir.FullName]],
                             [
                                 ["version", version],
-                                ["RepositoryCommit", commitInfo.Commit]
+                                ["RepositoryCommit", tuple.commitInfo.Commit]
                             ]);
 
                         var finalArguments = string.Join(" ", "pack", projectPath, arguments);
@@ -90,7 +96,7 @@ logger.Execute(log =>
                         var env = new Dictionary<string, string>
                         {
                             // Prefer environment variable to avoid MSBuild CLI parsing issues
-                            ["PackageReleaseNotes"] = releaseNotes
+                            ["PackageReleaseNotes"] = normalizedReleaseNotes
                         };
 
                         return Command.Execute("dotnet", finalArguments, null!, env)
