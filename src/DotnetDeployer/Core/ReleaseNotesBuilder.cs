@@ -55,7 +55,7 @@ public class ReleaseNotesBuilder
         }
 
         var range = $"{previousPackage.Value.Commit}..{currentCommit}";
-        return command.Execute("git", $"log {range} --pretty=format:%h %s", repositoryRoot)
+        return command.Execute("git", $"log {range} \"--pretty=format:%h %s\"", repositoryRoot)
             .Map(output => (IReadOnlyList<string>)output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList());
