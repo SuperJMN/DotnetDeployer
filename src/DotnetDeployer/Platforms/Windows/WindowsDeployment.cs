@@ -90,44 +90,46 @@ resources.Add(msixResult.Value);
 msixLogger.Execute(log => log.Information("Created {File}", $"{baseName}.msix"));
 
             // Create Windows Setup .exe (stub-based installer)
-            var setupTemp = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"dp-winsetup-{Guid.NewGuid():N}.exe");
-var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
-try
-{
-    installerLogger.Execute(log => log.Information("Creating Installer"));
-    var options = new DotnetPackaging.Options
-                {
-                    Name = deploymentOptions.PackageName,
-                    Id = Maybe<string>.From($"com.{SanitizeIdentifier(deploymentOptions.PackageName)}"),
-                    Version = deploymentOptions.Version,
-                    Comment = Maybe<string>.From(deploymentOptions.MsixOptions.AppDescription ?? deploymentOptions.PackageName),
-                };
-
-                var svc = new DotnetPackaging.Exe.ExePackagingService();
-                var projectFile = new FileInfo(projectPath.Value);
-                var runtimeIdentifier = WindowsArchitecture[architecture].Runtime;
-                var outputFile = new FileInfo(setupTemp);
-                var buildResult = await svc.BuildFromProject(projectFile, runtimeIdentifier, true, "Release", true, false, outputFile, options, deploymentOptions.PackageName, null);
-                if (buildResult.IsFailure)
-                {
-installerLogger.Execute(log => log.Debug("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
-                }
-                else
-                {
-                    var bytes = await File.ReadAllBytesAsync(setupTemp);
-resources.Add(new Resource($"{baseName}-setup.exe", Zafiro.DivineBytes.ByteSource.FromBytes(bytes)));
-                    installerLogger.Execute(log => log.Information("Created Installer {File}", $"{baseName}-setup.exe"));
-                }
-            }
-            finally
+            var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
+            
+            installerLogger.Execute(log => log.Information("Creating Installer"));
+            var options = new DotnetPackaging.Options
             {
-                try
-                {
-                    if (File.Exists(setupTemp)) File.Delete(setupTemp);
-                }
-                catch { /* ignore */ }
-            }
+                Name = deploymentOptions.PackageName,
+                Id = Maybe<string>.From($"com.{SanitizeIdentifier(deploymentOptions.PackageName)}"),
+                Version = deploymentOptions.Version,
+                Comment = Maybe<string>.From(deploymentOptions.MsixOptions.AppDescription ?? deploymentOptions.PackageName),
+            };
 
+            var svc = new DotnetPackaging.Exe.ExePackagingService();
+            var projectFile = new FileInfo(projectPath.Value);
+            var runtimeIdentifier = WindowsArchitecture[architecture].Runtime;
+            var outputName = $"{baseName}-setup.exe";
+            var setupLogo = icon.Map(i => Zafiro.DivineBytes.ByteSource.FromStreamFactory(() => File.OpenRead(i.Path))).GetValueOrDefault();
+
+            var buildResult = await svc.BuildFromProject(projectFile, runtimeIdentifier, true, "Release", true, false, outputName, options, deploymentOptions.PackageName, null, setupLogo);
+            if (buildResult.IsFailure)
+            {
+                installerLogger.Execute(log => log.Debug("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", WindowsArchitecture[architecture].Suffix, buildResult.Error));
+            }
+            else
+            {
+                var container = buildResult.Value;
+                var resourceMaybe = container.ResourcesWithPathsRecursive()
+                    .TryFirst(r => r.Name == outputName);
+
+                resourceMaybe.Execute(r =>
+                {
+                    resources.Add(r);
+                    installerLogger.Execute(log => log.Information("Created Installer {File}", r.Name));
+                });
+                
+                if (resourceMaybe.HasNoValue)
+                {
+                     installerLogger.Execute(log => log.Warning("Windows Setup installer built successfully but resource {Name} was not found in container.", outputName));
+                }
+            }
+            
             return Result.Success<IEnumerable<INamedByteSource>>(resources);
         }
         finally

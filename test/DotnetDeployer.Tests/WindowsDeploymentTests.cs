@@ -41,9 +41,9 @@ public class WindowsDeploymentTests
             .AllSatisfy(properties => properties.Should().ContainKey("ApplicationIcon"));
         var artifactNames = result.Value.Select(resource => resource.Name).ToList();
         artifactNames.Should().HaveCount(4);
-        artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.exe");
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64-sfx.exe");
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.msix");
-        artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.exe");
+        artifactNames.Should().Contain("TestApp-1.0.0-windows-x64-sfx.exe");
         artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.msix");
     }
 
