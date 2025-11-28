@@ -1,6 +1,3 @@
-using DotnetPackaging;
-using Zafiro.Commands;
-
 namespace DotnetDeployer.Core;
 
 public class Context(IDotnet dotnet, ICommand command, Maybe<ILogger> logger, IHttpClientFactory httpClientFactory)

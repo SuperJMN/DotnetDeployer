@@ -1,7 +1,4 @@
-using System.Collections.Generic;
-using DotnetPackaging;
 using DotnetPackaging.Publish;
-using Zafiro.Commands;
 using Zafiro.DivineBytes.System.IO;
 
 namespace DotnetDeployer.Core;

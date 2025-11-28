@@ -1,8 +1,5 @@
-using System.Collections.Generic;
-using System.Reactive.Linq;
 using DotnetDeployer.Core;
 using DotnetPackaging.Publish;
-using Zafiro.Mixins;
 using File = System.IO.File;
 
 namespace DotnetDeployer.Platforms.Android;

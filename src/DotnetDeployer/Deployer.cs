@@ -2,8 +2,6 @@ using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Services.GitHub;
-using DotnetPackaging;
-using Zafiro.Commands;
 using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.Misc;
 using Zafiro.Mixins;
