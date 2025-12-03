@@ -35,7 +35,11 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             return Result.Failure("One or more projects to publish are empty or null.");
         }
 
-        Context.Logger.Information("NuGet packaging pipeline started for {ProjectCount} project(s)", projectToPublish.Count);
+        var projectNames = projectToPublish
+            .Select(System.IO.Path.GetFileNameWithoutExtension)
+            .ToList();
+
+        Context.Logger.Information("NuGet packaging pipeline started for {ProjectCount} project(s): {Projects}", projectNames.Count, projectNames);
         Context.Logger.Debug("Publishing projects: {@Projects}", projectToPublish);
 
         var packagesResult = await projectToPublish
@@ -52,13 +56,17 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             return Result.Failure(packagesResult.Error);
         }
 
+        var packages = packagesResult.Value.ToList();
+        var packageNames = packages.Select(package => package.Name).ToList();
+        Context.Logger.Information("NuGet packages prepared: {Packages}", packageNames);
+
         if (!push)
         {
             Context.Logger.Information("NuGet packages created. Push skipped (--no-push)");
             return Result.Success();
         }
 
-        var publishResult = await packagesResult.Value
+        var publishResult = await packages
             .Select(resource =>
             {
                 Context.Logger.Debug("Publishing package {Resource} in NuGet.org", resource.Name);
@@ -68,6 +76,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         if (publishResult.IsSuccess)
         {
             Context.Logger.Information("NuGet publishing completed successfully");
+            Context.Logger.Information("Published NuGet packages: {Packages}", packageNames);
         }
 
         return publishResult;
