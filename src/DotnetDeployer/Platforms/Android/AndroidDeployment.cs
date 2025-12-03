@@ -4,10 +4,25 @@ using File = System.IO.File;
 
 namespace DotnetDeployer.Platforms.Android;
 
-public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployment.DeploymentOptions options, Maybe<ILogger> logger)
+public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployment.DeploymentOptions options, Maybe<ILogger> logger, IAndroidWorkloadGuard workloadGuard)
 {
+    private const string AndroidRuntimeIdentifier = "android-arm64";
+    private readonly IAndroidWorkloadGuard androidWorkloadGuard = workloadGuard ?? throw new ArgumentNullException(nameof(workloadGuard));
+
     public async Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
+        var workloadResult = await androidWorkloadGuard.EnsureWorkload();
+        if (workloadResult.IsFailure)
+        {
+            return Result.Failure<IEnumerable<INamedByteSource>>(workloadResult.Error);
+        }
+
+        var restoreResult = await androidWorkloadGuard.Restore(projectPath, AndroidRuntimeIdentifier);
+        if (restoreResult.IsFailure)
+        {
+            return Result.Failure<IEnumerable<INamedByteSource>>(restoreResult.Error);
+        }
+
         var tempKeystoreResult = await CreateTempKeystore(options.AndroidSigningKeyStore);
 
         return await tempKeystoreResult
@@ -154,7 +169,7 @@ renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to
         return new ProjectPublishRequest(projectPath.Value)
         {
             Configuration = "Release",
-            Rid = Maybe<string>.None,
+            Rid = Maybe<string>.From(AndroidRuntimeIdentifier),
             MsBuildProperties = properties,
             SelfContained = false,
         };

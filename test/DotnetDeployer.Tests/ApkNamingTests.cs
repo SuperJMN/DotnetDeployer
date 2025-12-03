@@ -37,7 +37,7 @@ public class ApkNamingTests
             AndroidSdkPath = Maybe<Path>.From(new Path(sdk.Path))
         };
 
-        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None);
+        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
         var result = await deployment.Create();
 
         result.Should().Succeed();
@@ -74,7 +74,7 @@ public class ApkNamingTests
             AndroidSdkPath = Maybe<Path>.From(new Path(sdk.Path))
         };
 
-        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None);
+        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
         var result = await deployment.Create();
 
         result.Should().Succeed();
@@ -109,7 +109,7 @@ public class ApkNamingTests
             AndroidSdkPath = Maybe<Path>.From(new Path(sdk.Path))
         };
 
-        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None);
+        var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
         var result = await deployment.Create();
 
         result.Should().Succeed();
@@ -122,6 +122,13 @@ public class ApkNamingTests
         public Task<Result<IContainer>> Publish(ProjectPublishRequest request) => Task.FromResult(publishResult);
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
         public Task<Result<INamedByteSource>> Pack(string projectPath, string version) => Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
+    }
+
+    private sealed class FakeAndroidWorkloadGuard : IAndroidWorkloadGuard
+    {
+        public Task<Result> EnsureWorkload() => Task.FromResult(Result.Success());
+
+        public Task<Result> Restore(Path projectPath, string runtimeIdentifier) => Task.FromResult(Result.Success());
     }
 
     private sealed class TemporarySdk : IDisposable

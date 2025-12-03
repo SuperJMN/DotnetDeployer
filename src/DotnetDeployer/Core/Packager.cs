@@ -18,7 +18,8 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
     public Task<Result<IEnumerable<INamedByteSource>>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
     {
         var platformLogger = logger.ForPlatform("Android");
-        return new AndroidDeployment(dotnet, path, options, platformLogger).Create();
+        var workloadGuard = new AndroidWorkloadGuard(new Command(platformLogger), platformLogger);
+        return new AndroidDeployment(dotnet, path, options, platformLogger, workloadGuard).Create();
     }
     
     public Task<Result<IEnumerable<INamedByteSource>>> CreateLinuxPackages(Path path, DotnetPackaging.AppImage.Metadata.AppImageMetadata metadata)
