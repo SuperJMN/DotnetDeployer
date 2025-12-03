@@ -11,41 +11,61 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
     public async Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
+        var plansResult = CreatePlans();
+        if (plansResult.IsFailure)
+        {
+            return plansResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+        }
+
+        var pipeline = new PublishPipeline(dotnet, PublishingOptions.ForLocal(persistArtifacts: false), logger);
+        return await pipeline.Execute(plansResult.Value);
+    }
+
+    public Result<IEnumerable<PlatformPackagePlan>> CreatePlans()
+    {
+        var plan = new PlatformPackagePlan(
+            "Android",
+            AndroidRuntimeIdentifier,
+            "ARM64",
+            PreparePublish,
+            publishLocation => Task.FromResult(Result.Success(AndroidPackages(publishLocation.Container))));
+
+        return Result.Success<IEnumerable<PlatformPackagePlan>>([plan]);
+    }
+
+    private async Task<Result<PlanPublishContext>> PreparePublish()
+    {
         var workloadResult = await androidWorkloadGuard.EnsureWorkload();
         if (workloadResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(workloadResult.Error);
+            return workloadResult.ConvertFailure<PlanPublishContext>();
         }
 
         var restoreResult = await androidWorkloadGuard.Restore(projectPath, AndroidRuntimeIdentifier);
         if (restoreResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(restoreResult.Error);
+            return restoreResult.ConvertFailure<PlanPublishContext>();
         }
 
         var tempKeystoreResult = await CreateTempKeystore(options.AndroidSigningKeyStore);
+        if (tempKeystoreResult.IsFailure)
+        {
+            return tempKeystoreResult.ConvertFailure<PlanPublishContext>();
+        }
 
-        return await tempKeystoreResult
-            .Bind(async tempKeystore =>
-            {
-                var sdk = new AndroidSdk(logger);
+        var sdk = new AndroidSdk(logger);
+        var androidSdkPathResult = options.AndroidSdkPath
+            .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
 
-                var androidSdkPathResult = options.AndroidSdkPath
-                    .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
-                
-                using (tempKeystore)
-                {
-                    return await androidSdkPathResult
-                        .Bind(async androidSdkPath =>
-                        {
-                            var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
-                            var publishResult = await dotnet.Publish(request);
-                            return publishResult.Map(AndroidPackages);
-                        });
-                }
-            });
+        if (androidSdkPathResult.IsFailure)
+        {
+            tempKeystoreResult.Value.Dispose();
+            return androidSdkPathResult.ConvertFailure<PlanPublishContext>();
+        }
+
+        var request = CreateRequest(projectPath, options, tempKeystoreResult.Value.FilePath, androidSdkPathResult.Value);
+        return Result.Success(new PlanPublishContext(request, tempKeystoreResult.Value.Dispose));
     }
-
 
     private static async Task<Result<TempKeystoreFile>> CreateTempKeystore(IByteSource byteSource)
     {

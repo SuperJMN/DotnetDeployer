@@ -22,7 +22,18 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
     public Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
-        // Prefer building for the current machine's architecture to avoid cross-publish failures
+        var plansResult = CreatePlans();
+        if (plansResult.IsFailure)
+        {
+            return Task.FromResult(plansResult.ConvertFailure<IEnumerable<INamedByteSource>>());
+        }
+
+        var pipeline = new PublishPipeline(dotnet, PublishingOptions.ForLocal(persistArtifacts: false), logger);
+        return pipeline.Execute(plansResult.Value);
+    }
+
+    public Result<IEnumerable<PlatformPackagePlan>> CreatePlans()
+    {
         var current = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
         IEnumerable<Architecture> targetArchitectures = current switch
         {
@@ -31,17 +42,13 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         };
 
         return targetArchitectures
-            .Select(CreateForArchitecture)
+            .Select(CreatePlanFor)
             .CombineInOrder()
-            .Map(results => results.SelectMany(files => files));
+            .Map(collection => collection.AsEnumerable());
     }
 
-    private Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(Architecture architecture)
+    private Result<PlatformPackagePlan> CreatePlanFor(Architecture architecture)
     {
-        var archLabel = architecture.ToArchLabel();
-        var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
-publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
-
         var request = new ProjectPublishRequest(projectPath)
         {
             Rid = Maybe<string>.From(LinuxArchitecture[architecture].Runtime),
@@ -50,25 +57,33 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
             MsBuildProperties = new Dictionary<string, string>()
         };
 
-        return dotnet.Publish(request)
-            .Bind(container => BuildArtifacts(container, architecture));
+        var archLabel = architecture.ToArchLabel();
+        var runtimeIdentifier = LinuxArchitecture[architecture].Runtime;
+        var plan = new PlatformPackagePlan(
+            "Linux",
+            runtimeIdentifier,
+            archLabel,
+            () => Task.FromResult(Result.Success(new PlanPublishContext(request))),
+            publishLocation => BuildArtifacts(publishLocation, architecture));
+
+        return Result.Success(plan);
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
+    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(PublishLocation publishLocation, Architecture architecture)
     {
         var version = metadata.Version.GetValueOrDefault("1.0.0");
         var baseFileName = $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
         var archLabel = architecture.ToArchLabel();
 
         var options = CreateDirectoryOptions(metadata, architecture);
-        var executableResult = await BuildUtils.GetExecutable(container, options);
+        var executableResult = await BuildUtils.GetExecutable(publishLocation.Container, options);
         if (executableResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(executableResult.Error);
         }
 
         var executable = executableResult.Value;
-        var packageMetadataResult = await CreatePackageMetadata(container, options, architecture, executable, metadata.PackageName);
+        var packageMetadataResult = await CreatePackageMetadata(publishLocation.Container, options, architecture, executable, metadata.PackageName);
         if (packageMetadataResult.IsFailure)
         {
             return packageMetadataResult.ConvertFailure<IEnumerable<INamedByteSource>>();
@@ -80,7 +95,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
 
         var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
         appImageLogger.Execute(log => log.Information("Creating AppImage"));
-        var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
+        var appImageResult = await CreateAppImage(publishLocation.Container, architecture, $"{baseFileName}.appimage");
         if (appImageResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
@@ -90,7 +105,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
 
         var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
         flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
-        var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
+        var flatpakResult = await CreateFlatpak(publishLocation.Container, packageMetadata, $"{baseFileName}.flatpak");
         if (flatpakResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
@@ -100,7 +115,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
 
         var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
         debLogger.Execute(log => log.Information("Creating DEB"));
-        var debResult = await CreateDeb(container, architecture, $"{baseFileName}.deb", executable);
+        var debResult = await CreateDeb(publishLocation.Container, architecture, $"{baseFileName}.deb", executable);
         if (debResult.IsFailure)
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
@@ -110,7 +125,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
 
         var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
         rpmLogger.Execute(log => log.Information("Creating RPM"));
-        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
+        var rpmResult = await CreateRpm(publishLocation.Container, architecture, $"{baseFileName}.rpm");
         if (rpmResult.IsFailure)
         {
             rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));

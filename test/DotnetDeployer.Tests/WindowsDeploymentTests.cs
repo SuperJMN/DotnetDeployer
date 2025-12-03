@@ -23,7 +23,8 @@ public class WindowsDeploymentTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new RecordingDotnet(Result.Success<IContainer>(container));
+        var published = new PublishedApplication(new Path("temp"), container, 0);
+        var dotnet = new RecordingDotnet(Result.Success(published));
 
         var deployment = new WindowsDeployment(dotnet, new Path(sandbox.ProjectPath), new WindowsDeployment.DeploymentOptions
         {
@@ -47,11 +48,11 @@ public class WindowsDeploymentTests
         artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.msix");
     }
 
-    private sealed class RecordingDotnet(Result<IContainer> publishResult) : IDotnet
+    private sealed class RecordingDotnet(Result<PublishedApplication> publishResult) : IDotnet
     {
         public List<ProjectPublishRequest> Requests { get; } = new();
 
-        public Task<Result<IContainer>> Publish(ProjectPublishRequest request)
+        public Task<Result<PublishedApplication>> Publish(ProjectPublishRequest request)
         {
             Requests.Add(request);
             return Task.FromResult(publishResult);

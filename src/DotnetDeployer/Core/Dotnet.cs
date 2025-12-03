@@ -1,3 +1,5 @@
+using System.IO;
+using System.Linq;
 using DotnetPackaging.Publish;
 using Zafiro.DivineBytes.System.IO;
 
@@ -20,7 +22,7 @@ public class Dotnet : IDotnet
         releaseNotesBuilder = new ReleaseNotesBuilder(command, this.packageHistoryProvider, logger);
     }
 
-    public async Task<Result<IContainer>> Publish(ProjectPublishRequest request)
+    public async Task<Result<PublishedApplication>> Publish(ProjectPublishRequest request)
     {
 logger.Execute(log =>
             log.Debug(
@@ -40,7 +42,7 @@ logger.Execute(log =>
                     request.ProjectPath,
                     error));
 
-            return Result.Failure<IContainer>(error);
+            return Result.Failure<PublishedApplication>(error);
         }
 
 logger.Execute(log =>
@@ -49,7 +51,10 @@ logger.Execute(log =>
                 request.ProjectPath,
                 publishResult.Value.OutputDirectory));
 
-        return Result.Success<IContainer>(publishResult.Value.Container);
+        var outputPath = new Path(publishResult.Value.OutputDirectory);
+        var size = CalculateSize(outputPath.Value);
+        var published = new PublishedApplication(outputPath, publishResult.Value.Container, size);
+        return Result.Success(published);
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)
@@ -128,5 +133,24 @@ logger.Execute(log =>
     private static string QuoteMsBuildPropertyValue(string value)
     {
         return $"\"{value}\"";
+    }
+
+    private static long CalculateSize(string directory)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+            {
+                return 0;
+            }
+
+            return Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Select(file => new FileInfo(file).Length)
+                .Sum();
+        }
+        catch
+        {
+            return 0;
+        }
     }
 }

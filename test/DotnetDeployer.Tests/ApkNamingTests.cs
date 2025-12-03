@@ -20,7 +20,8 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var published = new PublishedApplication(new Path("temp"), container, 0);
+        var dotnet = new FakeDotnet(Result.Success(published));
 
         using var sdk = new TemporarySdk();
 
@@ -57,7 +58,8 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var published = new PublishedApplication(new Path("temp"), container, 0);
+        var dotnet = new FakeDotnet(Result.Success(published));
 
         using var sdk = new TemporarySdk();
 
@@ -91,7 +93,8 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var published = new PublishedApplication(new Path("temp"), container, 0);
+        var dotnet = new FakeDotnet(Result.Success(published));
 
         using var sdk = new TemporarySdk();
 
@@ -117,9 +120,9 @@ public class ApkNamingTests
             "AngorApp-1.0.0-android.aab");
     }
 
-    private class FakeDotnet(Result<IContainer> publishResult) : IDotnet
+    private class FakeDotnet(Result<PublishedApplication> publishResult) : IDotnet
     {
-        public Task<Result<IContainer>> Publish(ProjectPublishRequest request) => Task.FromResult(publishResult);
+        public Task<Result<PublishedApplication>> Publish(ProjectPublishRequest request) => Task.FromResult(publishResult);
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
         public Task<Result<INamedByteSource>> Pack(string projectPath, string version) => Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
     }

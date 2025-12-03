@@ -10,7 +10,7 @@ namespace DotnetDeployer;
 
 public class Deployer(Context context, Packager packager, Publisher publisher)
 {
-    private readonly ReleasePackagingStrategy packagingStrategy = new(packager, context.Logger);
+    private readonly ReleasePackagingStrategy packagingStrategy = new(context, packager);
     public Context Context { get; } = context;
 
     public static Deployer Instance
