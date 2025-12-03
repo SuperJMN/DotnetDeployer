@@ -11,9 +11,9 @@ public class ArtifactSink
         this.logger = logger;
     }
 
-    public Task<Result<IEnumerable<INamedByteSource>>> Persist(string platform, string runtimeIdentifier, IEnumerable<INamedByteSource> artifacts)
+    public async Task<Result<IEnumerable<INamedByteSource>>> Persist(string platform, string runtimeIdentifier, IEnumerable<INamedByteSource> artifacts)
     {
-        var result = Result.Try(() =>
+        return await Result.Try(async () =>
         {
             var targetDirectory = global::System.IO.Path.Combine(root.Value, platform.ToLowerInvariant(), runtimeIdentifier);
             global::System.IO.Directory.CreateDirectory(targetDirectory);
@@ -21,7 +21,7 @@ public class ArtifactSink
             foreach (var artifact in artifacts)
             {
                 var destination = global::System.IO.Path.Combine(targetDirectory, artifact.Name);
-                var writeResult = artifact.WriteTo(destination);
+                var writeResult = await artifact.WriteTo(destination);
                 if (writeResult.IsFailure)
                 {
                     throw new InvalidOperationException(writeResult.Error ?? $"Failed to write artifact {artifact.Name}");
@@ -31,7 +31,5 @@ public class ArtifactSink
 
             return artifacts;
         });
-
-        return Task.FromResult(result);
     }
 }

@@ -41,10 +41,19 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             _ => new[] { Architecture.X64 }
         };
 
-        return targetArchitectures
-            .Select(CreatePlanFor)
-            .CombineInOrder()
-            .Map(collection => collection.AsEnumerable());
+        var plans = new List<PlatformPackagePlan>();
+        foreach (var architecture in targetArchitectures)
+        {
+            var planResult = CreatePlanFor(architecture);
+            if (planResult.IsFailure)
+            {
+                return planResult.ConvertFailure<IEnumerable<PlatformPackagePlan>>();
+            }
+
+            plans.Add(planResult.Value);
+        }
+
+        return Result.Success<IEnumerable<PlatformPackagePlan>>(plans);
     }
 
     private Result<PlatformPackagePlan> CreatePlanFor(Architecture architecture)

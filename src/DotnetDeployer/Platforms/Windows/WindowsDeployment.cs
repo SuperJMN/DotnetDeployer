@@ -34,10 +34,19 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     {
         IEnumerable<Architecture> supportedArchitectures = [Architecture.Arm64, Architecture.X64];
 
-        return supportedArchitectures
-            .Select(CreatePlanFor)
-            .CombineInOrder()
-            .Map(collection => collection.AsEnumerable());
+        var plans = new List<PlatformPackagePlan>();
+        foreach (var architecture in supportedArchitectures)
+        {
+            var planResult = CreatePlanFor(architecture);
+            if (planResult.IsFailure)
+            {
+                return planResult.ConvertFailure<IEnumerable<PlatformPackagePlan>>();
+            }
+
+            plans.Add(planResult.Value);
+        }
+
+        return Result.Success<IEnumerable<PlatformPackagePlan>>(plans);
     }
 
     private Result<PlatformPackagePlan> CreatePlanFor(Architecture architecture)

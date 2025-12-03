@@ -28,10 +28,19 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
     {
         IEnumerable<DpArch> targetArchitectures = new[] { DpArch.Arm64, DpArch.X64 };
 
-        return targetArchitectures
-            .Select(CreatePlanForArchitecture)
-            .CombineInOrder()
-            .Map(collection => collection.AsEnumerable());
+        var plans = new List<PlatformPackagePlan>();
+        foreach (var architecture in targetArchitectures)
+        {
+            var planResult = CreatePlanForArchitecture(architecture);
+            if (planResult.IsFailure)
+            {
+                return planResult.ConvertFailure<IEnumerable<PlatformPackagePlan>>();
+            }
+
+            plans.Add(planResult.Value);
+        }
+
+        return Result.Success<IEnumerable<PlatformPackagePlan>>(plans);
     }
 
     private Result<PlatformPackagePlan> CreatePlanForArchitecture(DpArch architecture)

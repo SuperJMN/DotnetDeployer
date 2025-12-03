@@ -1,3 +1,5 @@
+using DotnetPackaging.Publish;
+
 namespace DotnetDeployer.Core;
 
 public class PlanPublishContext
