@@ -123,7 +123,11 @@ sealed class NugetCommandFactory
                 : packableProjectDiscovery.Discover(solution, pattern).Select(file => file.FullName);
             var projectList = projectCandidates.ToList();
 
-            Log.Information("Publishing {Count} NuGet package(s)", projectList.Count);
+            var projectNames = projectList
+                .Select(Path.GetFileNameWithoutExtension)
+                .ToList();
+
+            Log.Information("Publishing {Count} NuGet package(s): {Projects}", projectList.Count, projectNames);
 
             var exitCode = await Deployer.Instance
                 .PublishNugetPackages(projectList, version, apiKey, push: !noPush)
