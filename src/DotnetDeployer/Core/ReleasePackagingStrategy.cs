@@ -1,13 +1,11 @@
-namespace DotnetDeployer.Core;
-
-using System.Linq;
 using DotnetDeployer.Platforms.Wasm;
-using Serilog;
+
+namespace DotnetDeployer.Core;
 
 public class ReleasePackagingStrategy
 {
-    private readonly Packager packager;
     private readonly Maybe<ILogger> logger;
+    private readonly Packager packager;
 
     public ReleasePackagingStrategy(Packager packager, Maybe<ILogger> logger)
     {
@@ -19,7 +17,7 @@ public class ReleasePackagingStrategy
     {
         var allFiles = new List<INamedByteSource>();
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
-        
+
         // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
         {
@@ -123,6 +121,11 @@ public class ReleasePackagingStrategy
             if (wasmResult.IsFailure)
             {
                 return Result.Failure<IEnumerable<INamedByteSource>>(wasmResult.Error);
+            }
+
+            using (wasmResult.Value)
+            {
+                // WebAssembly output is handled by deployment flows; keep publish output scoped and cleaned.
             }
 
             // Note: WasmApp is typically deployed to GitHub Pages or similar, not included as release asset

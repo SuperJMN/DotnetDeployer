@@ -1,4 +1,6 @@
 using DotnetDeployer.Core;
+using DotnetPackaging;
+using DotnetPackaging.Exe;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -14,18 +16,18 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger)
     {
         var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
         installerLogger.Execute(log => log.Information("Creating Installer"));
-        var options = new DotnetPackaging.Options
+        var options = new Options
         {
             Name = deploymentOptions.PackageName,
             Id = Maybe<string>.From($"com.{WindowsPackageIdentity.Sanitize(deploymentOptions.PackageName)}"),
             Version = deploymentOptions.Version,
-            Comment = Maybe<string>.From(deploymentOptions.MsixOptions.AppDescription ?? deploymentOptions.PackageName),
+            Comment = Maybe<string>.From(deploymentOptions.MsixOptions.AppDescription ?? deploymentOptions.PackageName)
         };
 
-        var svc = new DotnetPackaging.Exe.ExePackagingService();
+        var svc = new ExePackagingService();
         var projectFile = new FileInfo(projectPath.Value);
         var outputName = $"{baseName}-setup.exe";
-        var setupLogo = icon.Map(i => Zafiro.DivineBytes.ByteSource.FromStreamFactory(() => File.OpenRead(i.Path))).GetValueOrDefault();
+        var setupLogo = icon.Map(i => ByteSource.FromStreamFactory(() => File.OpenRead(i.Path))).GetValueOrDefault();
 
         var buildResult = await svc.BuildFromProject(projectFile, runtimeIdentifier, true, "Release", true, false, outputName, options, deploymentOptions.PackageName, null, setupLogo);
         if (buildResult.IsFailure)

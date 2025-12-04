@@ -43,12 +43,12 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         Context.Logger.Debug("Publishing projects: {@Projects}", projectToPublish);
 
         var packagesResult = await projectToPublish
-            .Select(project =>
-            {
-                Context.Logger.Debug("Packing {Project}", project);
-                return packager.CreateNugetPackage(project, version);
-            })
-            .CombineSequentially()
+                .Select(project =>
+                {
+                    Context.Logger.Debug("Packing {Project}", project);
+                    return packager.CreateNugetPackage(project, version);
+                })
+                .CombineSequentially()
             ;
 
         if (packagesResult.IsFailure)
@@ -178,12 +178,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     {
         return packagingStrategy.CreateWasmSite(projectPath)
             .TapError(error => Context.Logger.Error("Failed to build WebAssembly site: {Error}", error))
-            .Bind(site =>
-            {
-                Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repository}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
-                return publisher.PublishToGitHubPages(site, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey)
-                    .TapError(error => Context.Logger.Error("GitHub Pages deployment failed: {Error}", error));
-            });
+            .Bind(site => PublishPages(site, repositoryConfig));
     }
 
     // Convenience method for automatic Avalonia project discovery
@@ -201,5 +196,15 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             .Build();
 
         return releaseConfigResult.Bind(rc => CreateGitHubRelease(rc, repositoryConfig, releaseData));
+    }
+
+    private async Task<Result> PublishPages(WasmApp site, GitHubRepositoryConfig repositoryConfig)
+    {
+        using (site)
+        {
+            Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repository}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
+            var publishResult = await publisher.PublishToGitHubPages(site, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
+            return publishResult.TapError(error => Context.Logger.Error("GitHub Pages deployment failed: {Error}", error));
+        }
     }
 }

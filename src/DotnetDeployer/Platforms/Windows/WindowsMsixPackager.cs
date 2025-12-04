@@ -77,7 +77,6 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
         var segments = sanitized.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var values = new int[4];
         for (var i = 0; i < values.Length; i++)
-        {
             if (i < segments.Length && int.TryParse(segments[i], out var parsed))
             {
                 values[i] = Math.Max(parsed, 0);
@@ -86,7 +85,6 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
             {
                 values[i] = 0;
             }
-        }
 
         return string.Join('.', values);
     }

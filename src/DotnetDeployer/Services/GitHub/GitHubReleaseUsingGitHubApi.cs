@@ -63,7 +63,7 @@ public class GitHubReleaseUsingGitHubApi(Context context, IEnumerable<INamedByte
                     ContentType = GetContentType(file.Name),
                     RawData = file.ToStreamSeekable()
                 };
-                
+
                 await client.Repository.Release.UploadAsset(release, assetUpload);
 
                 context.Logger.Execute(logger => logger.Information("Successfully uploaded asset {FileName}", file.Name));
@@ -81,7 +81,7 @@ public class GitHubReleaseUsingGitHubApi(Context context, IEnumerable<INamedByte
 
     private static string GetContentType(string fileName)
     {
-        var extension = global::System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        var extension = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
         return extension switch
         {
             ".zip" => "application/zip",

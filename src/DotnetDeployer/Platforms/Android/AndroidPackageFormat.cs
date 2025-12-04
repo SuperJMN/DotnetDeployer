@@ -8,19 +8,28 @@ public enum AndroidPackageFormat
 
 public static class AndroidPackageFormatExtensions
 {
-    public static string ToMsBuildValue(this AndroidPackageFormat format) => format switch
+    public static string ToMsBuildValue(this AndroidPackageFormat format)
     {
-        AndroidPackageFormat.Apk => "apk",
-        AndroidPackageFormat.Aab => "aab",
-        _ => "apk"
-    };
+        return format switch
+        {
+            AndroidPackageFormat.Apk => "apk",
+            AndroidPackageFormat.Aab => "aab",
+            _ => "apk"
+        };
+    }
 
-    public static string FileExtension(this AndroidPackageFormat format) => format switch
+    public static string FileExtension(this AndroidPackageFormat format)
     {
-        AndroidPackageFormat.Apk => ".apk",
-        AndroidPackageFormat.Aab => ".aab",
-        _ => ".apk"
-    };
+        return format switch
+        {
+            AndroidPackageFormat.Apk => ".apk",
+            AndroidPackageFormat.Aab => ".aab",
+            _ => ".apk"
+        };
+    }
 
-    public static bool RequiresSignedSuffix(this AndroidPackageFormat format) => format == AndroidPackageFormat.Apk;
+    public static bool RequiresSignedSuffix(this AndroidPackageFormat format)
+    {
+        return format == AndroidPackageFormat.Apk;
+    }
 }

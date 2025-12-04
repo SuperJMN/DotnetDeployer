@@ -32,7 +32,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
                 var androidSdkPathResult = options.AndroidSdkPath
                     .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
-                
+
                 using (tempKeystore)
                 {
                     return await androidSdkPathResult
@@ -40,7 +40,13 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                         {
                             var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
                             var publishResult = await dotnet.Publish(request);
-                            return publishResult.Map(AndroidPackages);
+                            if (publishResult.IsFailure)
+                            {
+                                return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+                            }
+
+                            using var publish = publishResult.Value;
+                            return Result.Success(AndroidPackages(publish));
                         });
                 }
             });
@@ -63,7 +69,6 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
 
     private IEnumerable<INamedByteSource> AndroidPackages(IContainer directory)
     {
-
         var extension = options.PackageFormat.FileExtension();
         var requiresSignedSuffix = options.PackageFormat.RequiresSignedSuffix();
 
@@ -78,15 +83,12 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         {
             if (allPackages.Count == 0)
             {
-log.Debug("No {Extension} files found in publish output.", extension);
+                log.Debug("No {Extension} files found in publish output.", extension);
             }
             else
             {
-log.Debug("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
-                foreach (var apk in allPackages)
-                {
-log.Debug(" - {Apk}", apk.Name);
-                }
+                log.Debug("Discovered {Count} {Extension} file(s):", allPackages.Count, extension);
+                foreach (var apk in allPackages) log.Debug(" - {Apk}", apk.Name);
             }
         });
 
@@ -94,7 +96,7 @@ log.Debug(" - {Apk}", apk.Name);
         var selectedPackages = allPackages
             .Where(res =>
             {
-                var fileName = global::System.IO.Path.GetFileName(res.Name);
+                var fileName = System.IO.Path.GetFileName(res.Name);
                 if (!fileName.Contains(options.ApplicationId, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
@@ -112,15 +114,12 @@ log.Debug(" - {Apk}", apk.Name);
 
         androidLogger.Execute(log =>
         {
-log.Debug("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
-            foreach (var apk in selectedPackages)
-            {
-log.Debug(" * {Apk}", apk.Name);
-            }
+            log.Debug("Selected {Count} {Extension} file(s) matching ApplicationId and criteria:", selectedPackages.Count, extension);
+            foreach (var apk in selectedPackages) log.Debug(" * {Apk}", apk.Name);
 
             if (selectedPackages.Count == 0)
             {
-log.Debug("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
+                log.Debug("No Android packages found matching ApplicationId '{ApplicationId}'.", options.ApplicationId);
             }
         });
 
@@ -128,17 +127,17 @@ log.Debug("No Android packages found matching ApplicationId '{ApplicationId}'.",
         var renamed = selectedPackages
             .Select(resource =>
             {
-                var originalName = global::System.IO.Path.GetFileNameWithoutExtension(resource.Name);
+                var originalName = System.IO.Path.GetFileNameWithoutExtension(resource.Name);
                 var dashIndex = originalName.LastIndexOf('-');
                 var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
                 var sanitizedSuffix = requiresSignedSuffix
                     ? suffix.Replace("-Signed", string.Empty, StringComparison.OrdinalIgnoreCase)
                     : suffix;
                 var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{sanitizedSuffix}{extension}";
-                
+
                 var archLabel = DetectAndroidArch(originalName);
                 var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
-renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+                renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
                 renLogger.Execute(log => log.Information("Creating {File}", finalName));
                 renLogger.Execute(log => log.Information("Created {File}", finalName));
                 return (INamedByteSource)new Resource(finalName, resource);
@@ -163,7 +162,7 @@ renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to
             ["AndroidSdkDirectory"] = androidSdkPath,
             ["AndroidSignV1"] = "true",
             ["AndroidSignV2"] = "true",
-            ["AndroidPackageFormats"] = deploymentOptions.PackageFormat.ToMsBuildValue(),
+            ["AndroidPackageFormats"] = deploymentOptions.PackageFormat.ToMsBuildValue()
         };
 
         return new ProjectPublishRequest(projectPath.Value)
@@ -171,14 +170,41 @@ renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to
             Configuration = "Release",
             Rid = Maybe<string>.From(AndroidRuntimeIdentifier),
             MsBuildProperties = properties,
-            SelfContained = false,
+            SelfContained = false
         };
+    }
+
+    private static string DetectAndroidArch(string name)
+    {
+        var lower = name.ToLowerInvariant();
+        if (lower.Contains("arm64") || lower.Contains("arm64-v8a"))
+        {
+            return "ARM64";
+        }
+
+        if (lower.Contains("x86_64"))
+        {
+            return "X64";
+        }
+
+        if (lower.Contains("armeabi-v7a") || lower.Contains("armv7"))
+        {
+            return "ARM";
+        }
+
+        if (lower.Contains("x86"))
+        {
+            return "X86";
+        }
+
+        return string.Empty; // unknown/universal
     }
 
     public class DeploymentOptions
     {
         // Used for artifact naming across platforms
         public required string PackageName { get; set; }
+
         // Used exclusively for Android APK filtering (should match the csproj <ApplicationId>)
         public required string ApplicationId { get; set; }
         public required int ApplicationVersion { get; init; }
@@ -189,15 +215,5 @@ renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to
         public required string SigningKeyPass { get; init; }
         public Maybe<Path> AndroidSdkPath { get; set; } = Maybe<Path>.None;
         public AndroidPackageFormat PackageFormat { get; init; } = AndroidPackageFormat.Apk;
-    }
-
-    private static string DetectAndroidArch(string name)
-    {
-        var lower = name.ToLowerInvariant();
-        if (lower.Contains("arm64") || lower.Contains("arm64-v8a")) return "ARM64";
-        if (lower.Contains("x86_64")) return "X64";
-        if (lower.Contains("armeabi-v7a") || lower.Contains("armv7")) return "ARM";
-        if (lower.Contains("x86")) return "X86";
-        return string.Empty; // unknown/universal
     }
 }

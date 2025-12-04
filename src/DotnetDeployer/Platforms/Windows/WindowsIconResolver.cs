@@ -15,7 +15,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
     public Result<Maybe<WindowsIcon>> Resolve(Path projectPath)
     {
         var projectFile = projectPath.ToString();
-        var projectDirectory = global::System.IO.Path.GetDirectoryName(projectFile);
+        var projectDirectory = IOPath.GetDirectoryName(projectFile);
 
         if (projectDirectory is null)
         {
@@ -34,7 +34,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
             .Map(icon => Maybe<WindowsIcon>.From(icon))
             .OnFailureCompensate(error =>
             {
-logger.Execute(log => log.Debug("Failed to prepare Windows icon for {Project}: {Error}", projectFile, error));
+                logger.Execute(log => log.Debug("Failed to prepare Windows icon for {Project}: {Error}", projectFile, error));
                 return Result.Success(Maybe<WindowsIcon>.None);
             });
     }
@@ -81,7 +81,7 @@ logger.Execute(log => log.Debug("Failed to prepare Windows icon for {Project}: {
         }
         catch (Exception ex)
         {
-logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} while looking for ApplicationIcon", projectFile));
+            logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} while looking for ApplicationIcon", projectFile));
         }
 
         return Maybe<IconReference>.None;
@@ -90,7 +90,6 @@ logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} 
     private Maybe<IconReference> FindIconInXaml(string projectDirectory)
     {
         foreach (var file in EnumerateFiles(projectDirectory, "*.axaml"))
-        {
             try
             {
                 var content = File.ReadAllText(file);
@@ -111,7 +110,6 @@ logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} 
             {
                 logger.Execute(log => log.Debug(ex, "Failed to inspect {File} while looking for Icon attribute", file));
             }
-        }
 
         return Maybe<IconReference>.None;
     }
@@ -119,7 +117,6 @@ logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} 
     private Maybe<IconReference> FindIconInCodeBehind(string projectDirectory)
     {
         foreach (var file in EnumerateFiles(projectDirectory, "*.cs"))
-        {
             try
             {
                 var content = File.ReadAllText(file);
@@ -140,7 +137,6 @@ logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} 
             {
                 logger.Execute(log => log.Debug(ex, "Failed to inspect {File} while looking for WindowIcon construction", file));
             }
-        }
 
         return Maybe<IconReference>.None;
     }
@@ -208,11 +204,11 @@ logger.Execute(log => log.Debug(ex, "Unable to parse project file {ProjectFile} 
 
         if (fallback.HasNoValue)
         {
-logger.Execute(log => log.Debug("Skipping SVG icon at {SvgPath} because no raster fallback was found", svgPath));
+            logger.Execute(log => log.Debug("Skipping SVG icon at {SvgPath} because no raster fallback was found", svgPath));
             return Result.Failure<WindowsIcon>("Unable to prepare a Windows icon from SVG without a PNG fallback");
         }
 
-logger.Execute(log => log.Debug("Using raster fallback {Fallback} for SVG icon {SvgPath}", fallback.Value, svgPath));
+        logger.Execute(log => log.Debug("Using raster fallback {Fallback} for SVG icon {SvgPath}", fallback.Value, svgPath));
         return CreateIconFromPng(fallback.Value);
     }
 
@@ -227,12 +223,10 @@ logger.Execute(log => log.Debug("Using raster fallback {Fallback} for SVG icon {
             }
 
             for (var i = 0; i < signature.Length; i++)
-            {
                 if (pngBytes[i] != signature[i])
                 {
                     throw new InvalidOperationException("Invalid PNG signature");
                 }
-            }
 
             var span = new ReadOnlySpan<byte>(pngBytes);
             var width = BinaryPrimitives.ReadUInt32BigEndian(span.Slice(16, 4));
@@ -344,10 +338,7 @@ logger.Execute(log => log.Debug("Using raster fallback {Fallback} for SVG icon {
                 continue;
             }
 
-            foreach (var file in files)
-            {
-                yield return file;
-            }
+            foreach (var file in files) yield return file;
 
             IEnumerable<string> directories;
             try

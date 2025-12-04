@@ -1,13 +1,15 @@
+using System.Runtime.InteropServices;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.AppImage;
 using DotnetPackaging.AppImage.Core;
 using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Deb;
-using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using DotnetPackaging.Flatpak;
-using DotnetPackaging.Rpm;
 using DotnetPackaging.Publish;
+using DotnetPackaging.Rpm;
+using Architecture = DotnetPackaging.Architecture;
+using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
 
 namespace DotnetDeployer.Platforms.Linux;
@@ -23,7 +25,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
     public Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
         // Prefer building for the current machine's architecture to avoid cross-publish failures
-        var current = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        var current = RuntimeInformation.ProcessArchitecture;
         IEnumerable<Architecture> targetArchitectures = current switch
         {
             RuntimeArch.Arm64 => new[] { Architecture.Arm64 },
@@ -40,7 +42,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
-publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
+        publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
 
         var request = new ProjectPublishRequest(projectPath)
         {
@@ -51,7 +53,15 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         };
 
         return dotnet.Publish(request)
-            .Bind(container => BuildArtifacts(container, architecture));
+            .Bind(container => BuildArtifactsWithCleanup(container, architecture));
+    }
+
+    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifactsWithCleanup(IPublishedDirectory container, Architecture architecture)
+    {
+        using (container)
+        {
+            return await BuildArtifacts(container, architecture);
+        }
     }
 
     private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
@@ -85,6 +95,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
         }
+
         results.Add(appImageResult.Value);
         appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
 
@@ -95,6 +106,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
         }
+
         results.Add(flatpakResult.Value);
         flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
 
@@ -105,6 +117,7 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         {
             return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
         }
+
         results.Add(debResult.Value);
         debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
 
@@ -348,25 +361,21 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
     private static IEnumerable<Uri> ParseUris(IEnumerable<string> values)
     {
         foreach (var value in values)
-        {
             if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
             {
                 yield return uri;
             }
-        }
     }
 
     private static bool TryParseEnum<TEnum>(string candidate, out TEnum value) where TEnum : struct, Enum
     {
         var normalized = NormalizeEnumCandidate(candidate);
         foreach (var name in Enum.GetNames(typeof(TEnum)))
-        {
             if (string.Equals(name, normalized, StringComparison.OrdinalIgnoreCase))
             {
                 value = Enum.Parse<TEnum>(name, true);
                 return true;
             }
-        }
 
         value = default;
         return false;

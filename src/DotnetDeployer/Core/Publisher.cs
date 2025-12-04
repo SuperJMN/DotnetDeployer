@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using DotnetDeployer.Platforms.Wasm;
@@ -11,7 +12,7 @@ public class Publisher(Context context)
 
     public Task<Result> PushNugetPackage(INamedByteSource file, string authToken)
     {
-        var fs = new System.IO.Abstractions.FileSystem();
+        var fs = new FileSystem();
         return Result.Try(() => fs.Path.GetRandomFileName() + "_" + file.Name)
             .Bind(path => file.WriteTo(path).Map(() => path))
             .Bind(path => Context.Dotnet.Push(path, authToken));
@@ -30,11 +31,11 @@ public class Publisher(Context context)
                     return pages.Publish();
                 }));
     }
-    
+
     private async Task<Result<(string User, string Email)>> GetGitHubUserInfo(string apiKey)
     {
         Context.Logger.Execute(x => x.Information("Extracting user info from API Key"));
-        
+
         try
         {
             var httpClient = Context.HttpClientFactory.CreateClient("GitHub");
@@ -50,7 +51,7 @@ public class Publisher(Context context)
 
             var user = root.GetProperty("name").GetString() ?? root.GetProperty("login").GetString() ?? "GitHub User";
             var email = root.GetProperty("email").GetString() ?? $"{root.GetProperty("login").GetString()}@users.noreply.github.com";
-            
+
             Context.Logger.Execute(x => x.Information("Got information from API Key using GitHub's API => User: {User}. Email: {Email}", user, email));
 
             return Result.Success((User: user, Email: email));

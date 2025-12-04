@@ -20,7 +20,7 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var dotnet = new FakeDotnet(Result.Success<IPublishedDirectory>(CreatePublishDirectory(container)));
 
         using var sdk = new TemporarySdk();
 
@@ -57,7 +57,7 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var dotnet = new FakeDotnet(Result.Success<IPublishedDirectory>(CreatePublishDirectory(container)));
 
         using var sdk = new TemporarySdk();
 
@@ -91,7 +91,7 @@ public class ApkNamingTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new FakeDotnet(Result.Success<IContainer>(container));
+        var dotnet = new FakeDotnet(Result.Success<IPublishedDirectory>(CreatePublishDirectory(container)));
 
         using var sdk = new TemporarySdk();
 
@@ -117,9 +117,9 @@ public class ApkNamingTests
             "AngorApp-1.0.0-android.aab");
     }
 
-    private class FakeDotnet(Result<IContainer> publishResult) : IDotnet
+    private class FakeDotnet(Result<IPublishedDirectory> publishResult) : IDotnet
     {
-        public Task<Result<IContainer>> Publish(ProjectPublishRequest request) => Task.FromResult(publishResult);
+        public Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request) => Task.FromResult(publishResult);
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
         public Task<Result<INamedByteSource>> Pack(string projectPath, string version) => Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
     }
@@ -157,5 +157,17 @@ public class ApkNamingTests
                 // ignore cleanup failures
             }
         }
+    }
+
+    private static IPublishedDirectory CreatePublishDirectory(RootContainer container)
+    {
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-test-publish-{Guid.NewGuid():N}");
+        var writeResult = container.WriteTo(tempDir).GetAwaiter().GetResult();
+        if (writeResult.IsFailure)
+        {
+            throw new InvalidOperationException(writeResult.Error);
+        }
+
+        return new PublishedDirectory(tempDir, Maybe<ILogger>.None);
     }
 }

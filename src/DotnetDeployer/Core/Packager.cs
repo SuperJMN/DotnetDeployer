@@ -1,8 +1,9 @@
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Linux;
+using DotnetDeployer.Platforms.Mac;
 using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Platforms.Windows;
-using DotnetDeployer.Platforms.Mac;
+using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Publish;
 
 namespace DotnetDeployer.Core;
@@ -21,8 +22,8 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         var workloadGuard = new AndroidWorkloadGuard(new Command(platformLogger), platformLogger);
         return new AndroidDeployment(dotnet, path, options, platformLogger, workloadGuard).Create();
     }
-    
-    public Task<Result<IEnumerable<INamedByteSource>>> CreateLinuxPackages(Path path, DotnetPackaging.AppImage.Metadata.AppImageMetadata metadata)
+
+    public Task<Result<IEnumerable<INamedByteSource>>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
     {
         var platformLogger = logger.ForPlatform("Linux");
         return new LinuxDeployment(dotnet, path, metadata, platformLogger).Create();
@@ -33,7 +34,7 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         var platformLogger = logger.ForPlatform("macOS");
         return new MacDeployment(dotnet, path, appName, version, platformLogger).Create();
     }
-    
+
     public Task<Result<INamedByteSource>> CreateNugetPackage(Path path, string version)
     {
         if (path == null)
@@ -43,7 +44,7 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
 
         return dotnet.Pack(path, version);
     }
-    
+
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
     {
         var platformLogger = logger.ForPlatform("Wasm");
@@ -53,7 +54,7 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
             Configuration = "Release",
             MsBuildProperties = new Dictionary<string, string>(),
             // WebAssembly apps are published as self-contained; use the browser-wasm RID.
-            Rid = Maybe<string>.From("browser-wasm"),
+            Rid = Maybe<string>.From("browser-wasm")
         };
 
         return platformDotnet.Publish(request)

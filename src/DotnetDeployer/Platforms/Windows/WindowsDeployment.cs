@@ -14,9 +14,9 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     };
 
     private readonly WindowsIconResolver iconResolver = new(logger);
-    private readonly WindowsSfxPackager sfxPackager = new(logger);
     private readonly WindowsMsixPackager msixPackager = new(logger);
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
+    private readonly WindowsSfxPackager sfxPackager = new(logger);
 
     public Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
@@ -55,7 +55,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
                 return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
             }
 
-            var directory = publishResult.Value;
+            using var directory = publishResult.Value;
 
             var executableResult = FindExecutable(directory);
             if (executableResult.IsFailure)

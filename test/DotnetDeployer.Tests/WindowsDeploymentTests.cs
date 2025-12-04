@@ -23,7 +23,7 @@ public class WindowsDeploymentTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new RecordingDotnet(Result.Success<IContainer>(container));
+        var dotnet = new RecordingDotnet(Result.Success<IPublishedDirectory>(CreatePublishDirectory(container)));
 
         var deployment = new WindowsDeployment(dotnet, new Path(sandbox.ProjectPath), new WindowsDeployment.DeploymentOptions
         {
@@ -47,11 +47,11 @@ public class WindowsDeploymentTests
         artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.msix");
     }
 
-    private sealed class RecordingDotnet(Result<IContainer> publishResult) : IDotnet
+    private sealed class RecordingDotnet(Result<IPublishedDirectory> publishResult) : IDotnet
     {
         public List<ProjectPublishRequest> Requests { get; } = new();
 
-        public Task<Result<IContainer>> Publish(ProjectPublishRequest request)
+        public Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request)
         {
             Requests.Add(request);
             return Task.FromResult(publishResult);
@@ -60,5 +60,17 @@ public class WindowsDeploymentTests
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
 
         public Task<Result<INamedByteSource>> Pack(string projectPath, string version) => Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
+    }
+
+    private static IPublishedDirectory CreatePublishDirectory(RootContainer container)
+    {
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-test-publish-{Guid.NewGuid():N}");
+        var writeResult = container.WriteTo(tempDir).GetAwaiter().GetResult();
+        if (writeResult.IsFailure)
+        {
+            throw new InvalidOperationException(writeResult.Error);
+        }
+
+        return new PublishedDirectory(tempDir, Maybe<ILogger>.None);
     }
 }

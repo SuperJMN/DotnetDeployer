@@ -95,17 +95,23 @@ public class AndroidSdk(Maybe<ILogger> logger)
     public Result<string> Check(string androidSdkPath)
     {
         if (string.IsNullOrWhiteSpace(androidSdkPath))
+        {
             return Result.Failure<string>("Android SDK path is empty");
+        }
 
         if (!Directory.Exists(androidSdkPath))
+        {
             return Result.Failure<string>($"Android SDK path does not exist: {androidSdkPath}");
+        }
 
         // Verify that it contains typical Android SDK directories
         var requiredDirs = new[] { "platform-tools", "platforms" };
-        var missingDirs = requiredDirs.Where(dir => !System.IO.Directory.Exists(Combine(androidSdkPath, dir))).ToList();
+        var missingDirs = requiredDirs.Where(dir => !Directory.Exists(Combine(androidSdkPath, dir))).ToList();
 
         if (missingDirs.Any())
+        {
             return Result.Failure<string>($"Path does not appear to be a valid Android SDK. Missing directories: {string.Join(", ", missingDirs)}");
+        }
 
         return Result.Success(androidSdkPath);
     }
