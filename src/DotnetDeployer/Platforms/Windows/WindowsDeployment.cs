@@ -72,7 +72,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
 
             var resources = new List<INamedByteSource> { sfxResult.Value };
 
-            var msixResult = msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
+            var msixResult = await msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
             if (msixResult.IsFailure)
             {
                 return msixResult.ConvertFailure<IEnumerable<INamedByteSource>>();
