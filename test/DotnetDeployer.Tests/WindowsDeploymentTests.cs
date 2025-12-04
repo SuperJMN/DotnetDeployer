@@ -64,13 +64,20 @@ public class WindowsDeploymentTests
 
     private static IPublishedDirectory CreatePublishDirectory(RootContainer container)
     {
-        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-test-publish-{Guid.NewGuid():N}");
-        var writeResult = container.WriteTo(tempDir).GetAwaiter().GetResult();
-        if (writeResult.IsFailure)
-        {
-            throw new InvalidOperationException(writeResult.Error);
-        }
+        return new FakePublishedDirectory(container);
+    }
 
-        return new PublishedDirectory(tempDir, Maybe<ILogger>.None);
+    private sealed class FakePublishedDirectory(RootContainer container) : IPublishedDirectory
+    {
+        public string OutputPath => "/tmp/in-memory-publish";
+
+        public IEnumerable<INamedContainer> Subcontainers => container.Subcontainers;
+
+        public IEnumerable<INamedByteSource> Resources => container.Resources;
+
+        public void Dispose()
+        {
+            // No-op for test
+        }
     }
 }

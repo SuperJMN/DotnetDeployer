@@ -16,7 +16,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     private readonly WindowsIconResolver iconResolver = new(logger);
     private readonly WindowsMsixPackager msixPackager = new(logger);
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
-    private readonly WindowsSfxPackager sfxPackager = new(logger);
+    private readonly WindowsSfxPackager sfxPackager = new(dotnet, logger);
 
     public Task<Result<IEnumerable<INamedByteSource>>> Create()
     {
@@ -64,7 +64,13 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             }
 
             var executable = executableResult.Value;
-            var resources = new List<INamedByteSource> { sfxPackager.Create(baseName, executable, archLabel) };
+            var sfxResult = await sfxPackager.Create(baseName, executable, archLabel);
+            if (sfxResult.IsFailure)
+            {
+                return sfxResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            }
+
+            var resources = new List<INamedByteSource> { sfxResult.Value };
 
             var msixResult = msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
             if (msixResult.IsFailure)

@@ -6,11 +6,12 @@ using Zafiro.Commands;
 
 namespace DotnetDeployer.Tests;
 
-public class ReleaseNotesBuilderBuildTests
+public class ReleaseNotesBuilderBuildTests : IDisposable
 {
     private readonly MockCommand command;
     private readonly MockPackageHistoryProvider packageHistoryProvider;
     private readonly ReleaseNotesBuilder builder;
+    private readonly string repositoryRoot;
     private readonly string validProjectPath;
 
     public ReleaseNotesBuilderBuildTests()
@@ -18,9 +19,12 @@ public class ReleaseNotesBuilderBuildTests
         command = new MockCommand();
         packageHistoryProvider = new MockPackageHistoryProvider();
         builder = new ReleaseNotesBuilder(command, packageHistoryProvider, Maybe<ILogger>.None);
-        
-        // Use the current directory which is inside the git repo
-        validProjectPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "test.csproj");
+
+        repositoryRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"release-notes-{Guid.NewGuid():N}");
+        System.IO.Directory.CreateDirectory(repositoryRoot);
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(repositoryRoot, ".git"));
+        validProjectPath = System.IO.Path.Combine(repositoryRoot, "test.csproj");
+        System.IO.File.WriteAllText(validProjectPath, string.Empty);
     }
 
     [Fact]
@@ -115,6 +119,21 @@ public class ReleaseNotesBuilderBuildTests
         result.Value.Should().Contain("- abc1234 Fix \"quoted\" bug");
         result.Value.Should().Contain("- def5678 Feature with / slash and \\ backslash");
         result.Value.Should().Contain("- ghi9012 Emoji 🐛 fix");
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            if (System.IO.Directory.Exists(repositoryRoot))
+            {
+                System.IO.Directory.Delete(repositoryRoot, true);
+            }
+        }
+        catch
+        {
+            // Cleanup best effort for test isolation
+        }
     }
 }
 
