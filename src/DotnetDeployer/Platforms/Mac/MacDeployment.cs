@@ -13,18 +13,21 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         [DpArch.Arm64] = ("osx-arm64", "arm64")
     };
 
-    public Task<Result<IEnumerable<INamedByteSource>>> Create()
+    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
     {
         // Build for both supported macOS architectures regardless of host
         IEnumerable<DpArch> targetArchitectures = new[] { DpArch.Arm64, DpArch.X64 };
 
-        return targetArchitectures
-            .Select(CreateForArchitecture)
-            .CombineInOrder()
-            .Map(results => results.SelectMany(files => files));
+        foreach (var architecture in targetArchitectures)
+        {
+            await foreach (var artifact in CreateForArchitecture(architecture))
+            {
+                yield return artifact;
+            }
+        }
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(DpArch architecture)
+    private async IAsyncEnumerable<Result<INamedByteSource>> CreateForArchitecture(DpArch architecture)
     {
         logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
 
@@ -44,7 +47,8 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         var publishResult = await dotnet.Publish(request);
         if (publishResult.IsFailure)
         {
-            return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            yield return Result.Failure<INamedByteSource>(publishResult.Error);
+            yield break;
         }
 
         using var container = publishResult.Value;
@@ -54,11 +58,13 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         var writeResult = await container.WriteTo(publishCopyDir);
         if (writeResult.IsFailure)
         {
-            return writeResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            yield return Result.Failure<INamedByteSource>(writeResult.Error);
+            yield break;
         }
 
         // Create DMG into temp file and return as resource
         var tempDmg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
+        Result<INamedByteSource> result;
         try
         {
             dmgLogger.Execute(log => log.Information("Creating DMG"));
@@ -68,11 +74,11 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
             var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
             dmgLogger.Execute(log => log.Information("Created {File}", $"{baseName}.dmg"));
             var resource = (INamedByteSource)new Resource($"{baseName}.dmg", ByteSource.FromBytes(bytes));
-            return Result.Success<IEnumerable<INamedByteSource>>([resource]);
+            result = Result.Success(resource);
         }
         catch (Exception ex)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>($"Failed to build DMG: {ex.Message}");
+            result = Result.Failure<INamedByteSource>($"Failed to build DMG: {ex.Message}");
         }
         finally
         {
@@ -93,6 +99,8 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
                 /* ignore */
             }
         }
+
+        yield return result;
     }
 
     private static string Sanitize(string name)

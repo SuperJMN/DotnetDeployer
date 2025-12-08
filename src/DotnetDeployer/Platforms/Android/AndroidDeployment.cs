@@ -9,47 +9,56 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
     private const string AndroidRuntimeIdentifier = "android-arm64";
     private readonly IAndroidWorkloadGuard androidWorkloadGuard = workloadGuard ?? throw new ArgumentNullException(nameof(workloadGuard));
 
-    public async Task<Result<IEnumerable<INamedByteSource>>> Create()
+    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
     {
         var workloadResult = await androidWorkloadGuard.EnsureWorkload();
         if (workloadResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(workloadResult.Error);
+            yield return Result.Failure<INamedByteSource>(workloadResult.Error);
+            yield break;
         }
 
         var restoreResult = await androidWorkloadGuard.Restore(projectPath, AndroidRuntimeIdentifier);
         if (restoreResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(restoreResult.Error);
+            yield return Result.Failure<INamedByteSource>(restoreResult.Error);
+            yield break;
         }
 
         var tempKeystoreResult = await CreateTempKeystore(options.AndroidSigningKeyStore);
+        if (tempKeystoreResult.IsFailure)
+        {
+            yield return Result.Failure<INamedByteSource>(tempKeystoreResult.Error);
+            yield break;
+        }
 
-        return await tempKeystoreResult
-            .Bind(async tempKeystore =>
-            {
-                var sdk = new AndroidSdk(logger);
+        using var tempKeystore = tempKeystoreResult.Value;
 
-                var androidSdkPathResult = options.AndroidSdkPath
-                    .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
+        var sdk = new AndroidSdk(logger);
 
-                using (tempKeystore)
-                {
-                    return await androidSdkPathResult
-                        .Bind(async androidSdkPath =>
-                        {
-                            var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
-                            var publishResult = await dotnet.Publish(request);
-                            if (publishResult.IsFailure)
-                            {
-                                return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
-                            }
+        var androidSdkPathResult = options.AndroidSdkPath
+            .Match(path => sdk.Check(path), () => new AndroidSdk(logger).FindPath());
 
-                            using var publish = publishResult.Value;
-                            return await AndroidPackages(publish);
-                        });
-                }
-            });
+        if (androidSdkPathResult.IsFailure)
+        {
+            yield return Result.Failure<INamedByteSource>(androidSdkPathResult.Error);
+            yield break;
+        }
+
+        var androidSdkPath = androidSdkPathResult.Value;
+        var request = CreateRequest(projectPath, options, tempKeystore.FilePath, androidSdkPath);
+        var publishResult = await dotnet.Publish(request);
+        if (publishResult.IsFailure)
+        {
+            yield return Result.Failure<INamedByteSource>(publishResult.Error);
+            yield break;
+        }
+
+        using var publish = publishResult.Value;
+        await foreach (var artifact in AndroidPackages(publish))
+        {
+            yield return artifact;
+        }
     }
 
 
@@ -67,7 +76,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         });
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> AndroidPackages(IContainer directory)
+    private async IAsyncEnumerable<Result<INamedByteSource>> AndroidPackages(IContainer directory)
     {
         var extension = options.PackageFormat.FileExtension();
         var requiresSignedSuffix = options.PackageFormat.RequiresSignedSuffix();
@@ -123,7 +132,6 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             }
         });
 
-        var renamed = new List<INamedByteSource>();
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var resource in selectedPackages)
@@ -150,14 +158,13 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             if (detachedResult.IsFailure)
             {
                 renLogger.Execute(log => log.Error("Failed to detach Android package {File}: {Error}", finalName, detachedResult.Error));
-                return Result.Failure<IEnumerable<INamedByteSource>>(detachedResult.Error);
+                yield return Result.Failure<INamedByteSource>(detachedResult.Error);
+                continue;
             }
 
             renLogger.Execute(log => log.Information("Created {File}", finalName));
-            renamed.Add(new Resource(finalName, detachedResult.Value));
+            yield return Result.Success<INamedByteSource>(new Resource(finalName, detachedResult.Value));
         }
-
-        return Result.Success<IEnumerable<INamedByteSource>>(renamed);
     }
 
     private static ProjectPublishRequest CreateRequest(Path projectPath, DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)

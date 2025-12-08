@@ -33,6 +33,7 @@ public class ReleasePackagingStrategy
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
 
         // Windows packages
+        // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
         {
             var windowsConfig = configuration.WindowsConfig;
@@ -43,19 +44,11 @@ public class ReleasePackagingStrategy
             }
 
             logger.Execute(l => l.Information("Packaging Windows artifacts from {Project}", windowsConfig.ProjectPath));
-            var windowsResult = await packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options);
-            if (windowsResult.IsFailure)
+            await foreach (var artifact in packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options))
             {
-                yield return Result.Failure<INamedByteSource>(windowsResult.Error);
-                yield break;
+                yield return artifact;
             }
-
-            var windowsArtifacts = windowsResult.Value.ToList();
-            foreach (var artifact in windowsArtifacts)
-            {
-                yield return Result.Success(artifact);
-            }
-            logger.Execute(l => l.Information("Windows packaging completed ({Count} artifacts)", windowsArtifacts.Count));
+            logger.Execute(l => l.Information("Windows packaging completed"));
         }
 
         // Linux packages
@@ -64,24 +57,16 @@ public class ReleasePackagingStrategy
             var linuxConfig = configuration.LinuxConfig;
             if (linuxConfig == null)
             {
-                 yield return Result.Failure<INamedByteSource>("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
-                 yield break;
+                yield return Result.Failure<INamedByteSource>("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Packaging Linux artifacts from {Project}", linuxConfig.ProjectPath));
-            var linuxResult = await packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata);
-            if (linuxResult.IsFailure)
+            await foreach (var artifact in packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata))
             {
-                 yield return Result.Failure<INamedByteSource>(linuxResult.Error);
-                 yield break;
+                yield return artifact;
             }
-
-            var linuxArtifacts = linuxResult.Value.ToList();
-            foreach (var artifact in linuxArtifacts)
-            {
-                yield return Result.Success(artifact);
-            }
-            logger.Execute(l => l.Information("Linux packaging completed ({Count} artifacts)", linuxArtifacts.Count));
+            logger.Execute(l => l.Information("Linux packaging completed"));
         }
 
         // macOS packages
@@ -95,19 +80,11 @@ public class ReleasePackagingStrategy
             }
 
             logger.Execute(l => l.Information("Packaging macOS artifacts from {Project}", macConfig.ProjectPath));
-            var macResult = await packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version);
-            if (macResult.IsFailure)
+            await foreach (var artifact in packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version))
             {
-                yield return Result.Failure<INamedByteSource>(macResult.Error);
-                yield break;
+                yield return artifact;
             }
-
-            var macArtifacts = macResult.Value.ToList();
-            foreach (var artifact in macArtifacts)
-            {
-                yield return Result.Success(artifact);
-            }
-            logger.Execute(l => l.Information("macOS packaging completed ({Count} artifacts)", macArtifacts.Count));
+            logger.Execute(l => l.Information("macOS packaging completed"));
         }
 
         // Android packages
@@ -121,19 +98,11 @@ public class ReleasePackagingStrategy
             }
 
             logger.Execute(l => l.Information("Packaging Android artifacts from {Project}", androidConfig.ProjectPath));
-            var androidResult = await packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options);
-            if (androidResult.IsFailure)
+            await foreach (var artifact in packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options))
             {
-                yield return Result.Failure<INamedByteSource>(androidResult.Error);
-                yield break;
+                yield return artifact;
             }
-
-            var androidArtifacts = androidResult.Value.ToList();
-            foreach (var artifact in androidArtifacts)
-            {
-                yield return Result.Success(artifact);
-            }
-            logger.Execute(l => l.Information("Android packaging completed ({Count} artifacts)", androidArtifacts.Count));
+            logger.Execute(l => l.Information("Android packaging completed"));
         }
 
         // WebAssembly site

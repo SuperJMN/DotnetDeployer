@@ -359,14 +359,29 @@ sealed class ExportCommandFactory
                     .TapError(error => Log.Error("Failed writing {File}: {Error}", resource.Name, error));
             }
 
-            var writeResult = await deployer.BuildArtifacts(releaseConfigResult.Value)
-                .Bind(files => files
-                    .Select(WriteArtifact)
-                    .CombineSequentially());
+            var writeResult = Result.Success();
+            await foreach (var artifactResult in deployer.BuildArtifactsStream(releaseConfigResult.Value))
+            {
+                if (artifactResult.IsFailure)
+                {
+                    Log.Error("Failed to build artifact: {Error}", artifactResult.Error);
+                    writeResult = Result.Failure("One or more artifacts failed to build.");
+                    continue; // Or break/return 1 depending on desired behavior. User asked for streaming, usually implies continuation or at least seeing what failed.
+                    // But if one fails, usually strict failure is better for CI/CD.
+                    // However, to keep it simple and safe:
+                    // return 1; 
+                }
+
+                var artifact = artifactResult.Value;
+                var writeOpResult = await WriteArtifact(artifact);
+                if (writeOpResult.IsFailure)
+                {
+                    writeResult = Result.Failure("One or more artifacts failed to write.");
+                }
+            }
 
             if (writeResult.IsFailure)
             {
-                Log.Error("Failed to build or write artifacts: {Error}", writeResult.Error);
                 return 1;
             }
 

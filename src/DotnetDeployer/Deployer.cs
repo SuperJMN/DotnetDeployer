@@ -191,6 +191,11 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         return packagingStrategy.PackageForPlatforms(releaseConfig);
     }
 
+    public IAsyncEnumerable<Result<INamedByteSource>> BuildArtifactsStream(ReleaseConfiguration releaseConfig)
+    {
+        return packagingStrategy.PackageStream(releaseConfig);
+    }
+
     // Expose WASM site creation
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
     {

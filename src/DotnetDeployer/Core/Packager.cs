@@ -10,26 +10,26 @@ namespace DotnetDeployer.Core;
 
 public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
 {
-    public Task<Result<IEnumerable<INamedByteSource>>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
+    public IAsyncEnumerable<Result<INamedByteSource>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
     {
         var platformLogger = logger.ForPlatform("Windows");
         return new WindowsDeployment(dotnet, path, deploymentOptions, platformLogger).Create();
     }
 
-    public Task<Result<IEnumerable<INamedByteSource>>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
+    public IAsyncEnumerable<Result<INamedByteSource>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
     {
         var platformLogger = logger.ForPlatform("Android");
         var workloadGuard = new AndroidWorkloadGuard(new Command(platformLogger), platformLogger);
         return new AndroidDeployment(dotnet, path, options, platformLogger, workloadGuard).Create();
     }
 
-    public Task<Result<IEnumerable<INamedByteSource>>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
+    public IAsyncEnumerable<Result<INamedByteSource>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
     {
         var platformLogger = logger.ForPlatform("Linux");
         return new LinuxDeployment(dotnet, path, metadata, platformLogger).Create();
     }
 
-    public Task<Result<IEnumerable<INamedByteSource>>> CreateMacPackages(Path path, string appName, string version)
+    public IAsyncEnumerable<Result<INamedByteSource>> CreateMacPackages(Path path, string appName, string version)
     {
         var platformLogger = logger.ForPlatform("macOS");
         return new MacDeployment(dotnet, path, appName, version, platformLogger).Create();

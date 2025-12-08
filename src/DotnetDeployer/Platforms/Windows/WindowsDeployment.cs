@@ -18,17 +18,20 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
     private readonly WindowsSfxPackager sfxPackager = new(dotnet, logger);
 
-    public Task<Result<IEnumerable<INamedByteSource>>> Create()
+    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
     {
         IEnumerable<Architecture> supportedArchitectures = [Architecture.Arm64, Architecture.X64];
 
-        return supportedArchitectures
-            .Select(architecture => CreateFor(architecture, options))
-            .CombineInOrder()
-            .Map(results => results.SelectMany(files => files));
+        foreach (var architecture in supportedArchitectures)
+        {
+            await foreach (var artifact in CreateFor(architecture, options))
+            {
+                yield return artifact;
+            }
+        }
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
+    private async IAsyncEnumerable<Result<INamedByteSource>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Windows", "Publish", archLabel);
@@ -37,7 +40,8 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(iconResult.Error);
+            yield return Result.Failure<INamedByteSource>(iconResult.Error);
+            yield break;
         }
 
         var icon = iconResult.Value;
@@ -52,7 +56,8 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             var publishResult = await dotnet.Publish(request);
             if (publishResult.IsFailure)
             {
-                return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+                yield return Result.Failure<INamedByteSource>(publishResult.Error);
+                yield break;
             }
 
             using var directory = publishResult.Value;
@@ -60,30 +65,36 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
             var executableResult = FindExecutable(directory);
             if (executableResult.IsFailure)
             {
-                return executableResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+                yield return Result.Failure<INamedByteSource>(executableResult.Error);
+                yield break;
             }
 
             var executable = executableResult.Value;
             var sfxResult = await sfxPackager.Create(baseName, executable, archLabel);
             if (sfxResult.IsFailure)
             {
-                return sfxResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+                yield return Result.Failure<INamedByteSource>(sfxResult.Error);
             }
-
-            var resources = new List<INamedByteSource> { sfxResult.Value };
+            else
+            {
+                yield return Result.Success(sfxResult.Value);
+            }
 
             var msixResult = await msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
             if (msixResult.IsFailure)
             {
-                return msixResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+                yield return Result.Failure<INamedByteSource>(msixResult.Error);
+            }
+            else
+            {
+                yield return Result.Success(msixResult.Value);
             }
 
-            resources.Add(msixResult.Value);
-
             var setupResource = await setupPackager.Create(runtimeIdentifier, archSuffix, deploymentOptions, baseName, icon, archLabel);
-            setupResource.Execute(resources.Add);
-
-            return Result.Success<IEnumerable<INamedByteSource>>(resources);
+            if (setupResource.HasValue)
+            {
+                yield return Result.Success(setupResource.Value);
+            }
         }
         finally
         {
