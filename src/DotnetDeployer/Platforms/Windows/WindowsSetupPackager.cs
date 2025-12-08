@@ -1,9 +1,7 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Exe;
+using System.Threading.Tasks;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -40,44 +38,23 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
             return Maybe<INamedByteSource>.None;
         }
 
-        try
+        var resourceMaybe = ExtractSetupResource(buildResult.Value, outputName, installerLogger);
+        if (resourceMaybe.HasNoValue)
         {
-            var resourceMaybe = ExtractSetupResource(buildResult.Value, outputName, installerLogger);
-            if (resourceMaybe.HasNoValue)
-            {
-                return Maybe<INamedByteSource>.None;
-            }
-
-            var tempPath = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"{baseName}-{Guid.NewGuid():N}-setup.exe");
-            var writeResult = await resourceMaybe.Value.WriteTo(tempPath);
-            if (writeResult.IsFailure)
-            {
-                installerLogger.Execute(log => log.Error("Failed to materialize installer {File}: {Error}", outputName, writeResult.Error));
-                return Maybe<INamedByteSource>.None;
-            }
-
-            var streamOptions = new FileStreamOptions
-            {
-                Mode = FileMode.Open,
-                Access = FileAccess.Read,
-                Share = FileShare.Read,
-                Options = FileOptions.DeleteOnClose
-            };
-
-            var byteSource = ByteSource.FromAsyncStreamFactory(
-                () => Task.FromResult<Stream>(new FileStream(tempPath, streamOptions)));
-            var detachedResource = (INamedByteSource)new Resource(outputName, byteSource);
-            installerLogger.Execute(log => log.Information("Created Installer {File}", detachedResource.Name));
-
-            return Maybe<INamedByteSource>.From(detachedResource);
+            return Maybe<INamedByteSource>.None;
         }
-        finally
+
+        var detachedResult = await ByteSourceDetacher.Detach(resourceMaybe.Value, outputName);
+        if (detachedResult.IsFailure)
         {
-            if (buildResult.Value is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
+            installerLogger.Execute(log => log.Error("Failed to materialize installer {File}: {Error}", outputName, detachedResult.Error));
+            return Maybe<INamedByteSource>.None;
         }
+
+        var detachedResource = (INamedByteSource)new Resource(outputName, detachedResult.Value);
+        installerLogger.Execute(log => log.Information("Created Installer {File}", detachedResource.Name));
+
+        return Maybe<INamedByteSource>.From(detachedResource);
     }
 
     private static Maybe<INamedByteSource> ExtractSetupResource(

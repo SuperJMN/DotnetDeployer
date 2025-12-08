@@ -8,5 +8,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../DotnetPackaging" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../Zafiro" vcs="Git" />
   </component>
 </project>

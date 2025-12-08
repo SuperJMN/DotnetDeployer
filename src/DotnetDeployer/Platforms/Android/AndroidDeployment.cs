@@ -46,7 +46,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
                             }
 
                             using var publish = publishResult.Value;
-                            return Result.Success(AndroidPackages(publish));
+                            return await AndroidPackages(publish);
                         });
                 }
             });
@@ -67,7 +67,7 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
         });
     }
 
-    private IEnumerable<INamedByteSource> AndroidPackages(IContainer directory)
+    private async Task<Result<IEnumerable<INamedByteSource>>> AndroidPackages(IContainer directory)
     {
         var extension = options.PackageFormat.FileExtension();
         var requiresSignedSuffix = options.PackageFormat.RequiresSignedSuffix();
@@ -123,29 +123,41 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             }
         });
 
-        // Rename selected APKs to the desired final naming convention
-        var renamed = selectedPackages
-            .Select(resource =>
+        var renamed = new List<INamedByteSource>();
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var resource in selectedPackages)
+        {
+            var originalName = System.IO.Path.GetFileNameWithoutExtension(resource.Name);
+            var dashIndex = originalName.LastIndexOf('-');
+            var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
+            var sanitizedSuffix = requiresSignedSuffix
+                ? suffix.Replace("-Signed", string.Empty, StringComparison.OrdinalIgnoreCase)
+                : suffix;
+            var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{sanitizedSuffix}{extension}";
+
+            if (!seenNames.Add(finalName))
             {
-                var originalName = System.IO.Path.GetFileNameWithoutExtension(resource.Name);
-                var dashIndex = originalName.LastIndexOf('-');
-                var suffix = dashIndex >= 0 ? originalName[dashIndex..] : string.Empty;
-                var sanitizedSuffix = requiresSignedSuffix
-                    ? suffix.Replace("-Signed", string.Empty, StringComparison.OrdinalIgnoreCase)
-                    : suffix;
-                var finalName = $"{options.PackageName}-{options.ApplicationDisplayVersion}-android{sanitizedSuffix}{extension}";
+                continue;
+            }
 
-                var archLabel = DetectAndroidArch(originalName);
-                var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
-                renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
-                renLogger.Execute(log => log.Information("Creating {File}", finalName));
-                renLogger.Execute(log => log.Information("Created {File}", finalName));
-                return (INamedByteSource)new Resource(finalName, resource);
-            })
-            .GroupBy(res => res.Name)
-            .Select(group => group.First());
+            var archLabel = DetectAndroidArch(originalName);
+            var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
+            renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
+            renLogger.Execute(log => log.Information("Creating {File}", finalName));
 
-        return renamed;
+            var detachedResult = await ByteSourceDetacher.Detach(resource, finalName);
+            if (detachedResult.IsFailure)
+            {
+                renLogger.Execute(log => log.Error("Failed to detach Android package {File}: {Error}", finalName, detachedResult.Error));
+                return Result.Failure<IEnumerable<INamedByteSource>>(detachedResult.Error);
+            }
+
+            renLogger.Execute(log => log.Information("Created {File}", finalName));
+            renamed.Add(new Resource(finalName, detachedResult.Value));
+        }
+
+        return Result.Success<IEnumerable<INamedByteSource>>(renamed);
     }
 
     private static ProjectPublishRequest CreateRequest(Path projectPath, DeploymentOptions deploymentOptions, string keyStorePath, string androidSdkPath)

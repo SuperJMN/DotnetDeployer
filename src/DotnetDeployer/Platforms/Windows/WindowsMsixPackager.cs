@@ -1,11 +1,9 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Msix;
 using DotnetPackaging.Msix.Core.Manifest;
 using Zafiro.DivineBytes;
+using System.Threading.Tasks;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -30,28 +28,13 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
             return msixResult.ConvertFailure<INamedByteSource>();
         }
 
-        var tempPath = global::System.IO.Path.Combine(global::System.IO.Path.GetTempPath(), $"{baseName}-{Guid.NewGuid():N}.msix");
-        var writeResult = await msixResult.Value.WriteTo(tempPath);
-        if (writeResult.IsFailure)
+        var detachedResult = await ByteSourceDetacher.Detach(msixResult.Value, $"{baseName}.msix");
+        if (detachedResult.IsFailure)
         {
-            return writeResult.ConvertFailure<INamedByteSource>();
+            return detachedResult.ConvertFailure<INamedByteSource>();
         }
 
-        var streamOptions = new FileStreamOptions
-        {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            Options = FileOptions.DeleteOnClose
-        };
-
-        var byteSource = ByteSource.FromAsyncStreamFactory(
-            () => Task.FromResult<Stream>(
-                new FileStream(
-                    tempPath,
-                    streamOptions)));
-
-        var resource = new Resource($"{baseName}.msix", byteSource);
+        var resource = new Resource($"{baseName}.msix", detachedResult.Value);
         msixLogger.Execute(log => log.Information("Created {File}", resource.Name));
 
         return Result.Success<INamedByteSource>(resource);
