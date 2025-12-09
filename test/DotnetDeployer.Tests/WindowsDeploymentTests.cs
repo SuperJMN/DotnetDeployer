@@ -31,7 +31,8 @@ public class WindowsDeploymentTests
             Version = "1.0.0"
         }, Maybe<ILogger>.None);
 
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         dotnet.Requests.Should().NotBeEmpty();

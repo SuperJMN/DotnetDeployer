@@ -41,7 +41,8 @@ public class ApkNamingTests
         };
 
         var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         result.Value.Select(x => x.Name).Should().BeEquivalentTo(
@@ -78,7 +79,8 @@ public class ApkNamingTests
         };
 
         var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         result.Value.Select(x => x.Name).Should().BeEquivalentTo(
@@ -113,7 +115,8 @@ public class ApkNamingTests
         };
 
         var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         result.Value.Select(x => x.Name).Should().BeEquivalentTo(
@@ -154,7 +157,8 @@ public class ApkNamingTests
         };
 
         var deployment = new AndroidDeployment(dotnet, new Path("project.csproj"), options, Maybe<ILogger>.None, new FakeAndroidWorkloadGuard());
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         var artifact = result.Value.Should().ContainSingle().Subject;

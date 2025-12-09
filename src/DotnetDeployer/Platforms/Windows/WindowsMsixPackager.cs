@@ -28,13 +28,7 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
             return msixResult.ConvertFailure<INamedByteSource>();
         }
 
-        var detachedResult = await ByteSourceDetacher.Detach(msixResult.Value, $"{baseName}.msix");
-        if (detachedResult.IsFailure)
-        {
-            return detachedResult.ConvertFailure<INamedByteSource>();
-        }
-
-        var resource = new Resource($"{baseName}.msix", detachedResult.Value);
+        var resource = new Resource($"{baseName}.msix", msixResult.Value);
         msixLogger.Execute(log => log.Information("Created {File}", resource.Name));
 
         return Result.Success<INamedByteSource>(resource);

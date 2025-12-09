@@ -43,15 +43,8 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
         {
             return Maybe<INamedByteSource>.None;
         }
-
-        var detachedResult = await ByteSourceDetacher.Detach(resourceMaybe.Value, outputName);
-        if (detachedResult.IsFailure)
-        {
-            installerLogger.Execute(log => log.Error("Failed to materialize installer {File}: {Error}", outputName, detachedResult.Error));
-            return Maybe<INamedByteSource>.None;
-        }
-
-        var detachedResource = (INamedByteSource)new Resource(outputName, detachedResult.Value);
+        
+        var detachedResource = (INamedByteSource)new Resource(outputName, resourceMaybe.Value);
         installerLogger.Execute(log => log.Information("Created Installer {File}", detachedResource.Name));
 
         return Maybe<INamedByteSource>.From(detachedResource);

@@ -33,7 +33,6 @@ public class ReleasePackagingStrategy
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
 
         // Windows packages
-        // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
         {
             var windowsConfig = configuration.WindowsConfig;

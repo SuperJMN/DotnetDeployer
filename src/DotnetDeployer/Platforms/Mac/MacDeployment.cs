@@ -68,7 +68,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         try
         {
             dmgLogger.Execute(log => log.Information("Creating DMG"));
-            await DmgIsoBuilder.Create(publishCopyDir, tempDmg, appName);
+            await DmgHfsBuilder.Create(publishCopyDir, tempDmg, appName);
 
             var bytes = await File.ReadAllBytesAsync(tempDmg);
             var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";

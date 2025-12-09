@@ -153,17 +153,8 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             var renLogger = logger.ForPackaging("Android", formatLabel, archLabel);
             renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
             renLogger.Execute(log => log.Information("Creating {File}", finalName));
-
-            var detachedResult = await ByteSourceDetacher.Detach(resource, finalName);
-            if (detachedResult.IsFailure)
-            {
-                renLogger.Execute(log => log.Error("Failed to detach Android package {File}: {Error}", finalName, detachedResult.Error));
-                yield return Result.Failure<INamedByteSource>(detachedResult.Error);
-                continue;
-            }
-
-            renLogger.Execute(log => log.Information("Created {File}", finalName));
-            yield return Result.Success<INamedByteSource>(new Resource(finalName, detachedResult.Value));
+            
+            yield return Result.Success<INamedByteSource>(new Resource(finalName, resource));
         }
     }
 
