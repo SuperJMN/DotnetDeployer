@@ -82,7 +82,7 @@ public class Dotnet : IDotnet
             .Bind(commitInfo => releaseNotesBuilder.Build(projectPath, version, commitInfo)
                 .Map(releaseNotes => (commitInfo, releaseNotes)))
             .Bind(tuple =>
-                Result.Try(() => filesystem.Directory.CreateTempSubdirectory())
+                Result.Try(() => filesystem.Directory.CreateDirectory(System.IO.Path.Combine(Directories.GetTempPath(), Guid.NewGuid().ToString("N"))))
                     .Bind(outputDir =>
                     {
                         var normalizedReleaseNotes = NormalizeReleaseNotes(tuple.releaseNotes);

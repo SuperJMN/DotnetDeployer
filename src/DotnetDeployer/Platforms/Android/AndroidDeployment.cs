@@ -62,12 +62,12 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
     }
 
 
-    private static async Task<Result<TempKeystoreFile>> CreateTempKeystore(IByteSource byteSource)
+    private async Task<Result<TempKeystoreFile>> CreateTempKeystore(IByteSource byteSource)
     {
         return await Result.Try(async () =>
         {
-            var tempPath = System.IO.Path.GetTempFileName();
-            var tempFile = new TempKeystoreFile(tempPath);
+            var tempPath = Directories.GetTempFileName();
+            var tempFile = new TempKeystoreFile(tempPath, logger);
 
             await using var stream = File.OpenWrite(tempPath);
             await byteSource.WriteTo(stream);

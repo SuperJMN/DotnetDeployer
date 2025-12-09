@@ -134,7 +134,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
         var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
         rpmLogger.Execute(log => log.Information("Creating RPM"));
-        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm");
+        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm", rpmLogger);
         if (rpmResult.IsFailure)
         {
             rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
@@ -200,7 +200,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         return Result.Success<INamedByteSource>(new Resource(fileName, byteSource));
     }
 
-    private async Task<Result<INamedByteSource>> CreateRpm(IContainer container, Architecture architecture, string fileName)
+    private async Task<Result<INamedByteSource>> CreateRpm(IContainer container, Architecture architecture, string fileName, Maybe<ILogger> rpmLogger)
     {
         var rpmResult = await RpmFile.From()
             .Container(container)
@@ -227,12 +227,14 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             {
                 if (rpmResult.IsSuccess && rpmResult.Value.Exists)
                 {
+                    rpmLogger.Execute(log => log.Debug("Deleting temporary RPM {File}", rpmResult.Value.FullName));
                     rpmResult.Value.Delete();
+                    rpmLogger.Execute(log => log.Debug("Deleted temporary RPM {File}", rpmResult.Value.FullName));
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore cleanup failures
+                rpmLogger.Execute(log => log.Warning("Failed to delete temporary RPM {File}: {Error}", rpmResult.Value?.FullName, ex.Message));
             }
         }
     }
