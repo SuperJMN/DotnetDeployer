@@ -54,7 +54,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         using var container = publishResult.Value;
 
         // Materialize publish output to temp directory
-        var publishCopyDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macpub-{Guid.NewGuid():N}");
+        var publishCopyDir = System.IO.Path.Combine(Directories.GetTempPath(), $"dp-macpub-{Guid.NewGuid():N}");
         var writeResult = await container.WriteTo(publishCopyDir);
         if (writeResult.IsFailure)
         {
@@ -63,7 +63,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         }
 
         // Create DMG into temp file and return as resource
-        var tempDmg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
+        var tempDmg = System.IO.Path.Combine(Directories.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
         Result<INamedByteSource> result;
         try
         {

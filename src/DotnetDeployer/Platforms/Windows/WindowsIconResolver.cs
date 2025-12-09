@@ -179,7 +179,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
 
         return extension switch
         {
-            ".ico" => Result.Success(new WindowsIcon(iconPath, false)),
+            ".ico" => Result.Success(new WindowsIcon(iconPath, false, logger)),
             ".png" => CreateIconFromPng(iconPath),
             ".svg" => ResolveSvg(iconPath),
             _ => Result.Failure<WindowsIcon>($"Unsupported icon format '{extension}' for Windows packaging")
@@ -248,7 +248,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
     {
         return Result.Try(() =>
         {
-            var tempFile = IOPath.Combine(IOPath.GetTempPath(), $"{Guid.NewGuid():N}.ico");
+            var tempFile = IOPath.Combine(DotnetDeployer.Core.Directories.GetTempPath(), $"{Guid.NewGuid():N}.ico");
             using var stream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None);
             using var writer = new BinaryWriter(stream);
 
@@ -265,7 +265,7 @@ public class WindowsIconResolver(Maybe<ILogger> logger)
             writer.Write(6 + 16);
             writer.Write(imageBytes);
 
-            return new WindowsIcon(tempFile, true);
+            return new WindowsIcon(tempFile, true, logger);
         });
     }
 

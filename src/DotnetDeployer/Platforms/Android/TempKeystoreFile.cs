@@ -1,6 +1,6 @@
 namespace DotnetDeployer.Platforms.Android;
 
-internal class TempKeystoreFile(string filePath) : IDisposable
+internal class TempKeystoreFile(string filePath, Maybe<ILogger> logger) : IDisposable
 {
     private bool disposed;
     public string FilePath { get; } = filePath;
@@ -13,12 +13,14 @@ internal class TempKeystoreFile(string filePath) : IDisposable
             {
                 if (File.Exists(FilePath))
                 {
+                    logger.Execute(log => log.Debug("Deleting temporary keystore {File}", FilePath));
                     File.Delete(FilePath);
+                    logger.Execute(log => log.Debug("Deleted temporary keystore {File}", FilePath));
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Log error si es necesario, pero no lanzar excepción en Dispose
+                logger.Execute(log => log.Warning("Failed to delete temporary keystore {File}: {Error}", FilePath, ex.Message));
             }
 
             disposed = true;

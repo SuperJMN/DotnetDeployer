@@ -40,7 +40,9 @@ public sealed class PublishedDirectory : IPublishedDirectory
         {
             if (Directory.Exists(OutputPath))
             {
+                logger.Execute(log => log.Debug("Deleting publish directory {Directory}", OutputPath));
                 Directory.Delete(OutputPath, true);
+                logger.Execute(log => log.Debug("Deleted publish directory {Directory}", OutputPath));
             }
         }
         catch (Exception ex)
