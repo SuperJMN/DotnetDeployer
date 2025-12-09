@@ -1,3 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,14 +13,12 @@
   <ItemGroup>
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="System.CommandLine" />
-    <PackageReference Include="DotnetPackaging" />
     <PackageReference Include="DotnetPackaging.AppImage" />
     <PackageReference Include="DotnetPackaging.Flatpak" />
     <PackageReference Include="DotnetPackaging.Rpm" />
     <PackageReference Include="DotnetPackaging.Deb" />
     <PackageReference Include="DotnetPackaging.Msix" />
     <PackageReference Include="DotnetPackaging.Dmg" />
-    <PackageReference Include="DotnetPackaging.Exe" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DotnetDeployer\DotnetDeployer.csproj" />

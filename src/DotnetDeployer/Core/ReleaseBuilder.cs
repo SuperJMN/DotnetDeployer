@@ -1,5 +1,6 @@
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Windows;
+using DotnetPackaging.AppImage.Metadata;
 using Zafiro.Mixins;
 
 namespace DotnetDeployer.Core;
@@ -25,7 +26,7 @@ public class ReleaseBuilder(Context context)
 
         return this;
     }
-    
+
     public ReleaseBuilder ForWindows(string projectPath, WindowsDeployment.DeploymentOptions options)
     {
         configuration.WindowsConfig = new WindowsPlatformConfig
@@ -47,7 +48,7 @@ public class ReleaseBuilder(Context context)
 
         return ForWindows(projectPath, windowsOptions);
     }
-    
+
     public ReleaseBuilder ForWindows(string projectPath, string packageName, string? version = null)
     {
         var windowsOptions = new WindowsDeployment.DeploymentOptions
@@ -57,8 +58,8 @@ public class ReleaseBuilder(Context context)
         };
         return ForWindows(projectPath, windowsOptions);
     }
-    
-    public ReleaseBuilder ForLinux(string projectPath, DotnetPackaging.AppImage.Metadata.AppImageMetadata metadata)
+
+    public ReleaseBuilder ForLinux(string projectPath, AppImageMetadata metadata)
     {
         configuration.LinuxConfig = new LinuxPlatformConfig
         {
@@ -71,7 +72,7 @@ public class ReleaseBuilder(Context context)
 
     public ReleaseBuilder ForLinux(string projectPath)
     {
-        var metadata = new DotnetPackaging.AppImage.Metadata.AppImageMetadata(
+        var metadata = new AppImageMetadata(
             configuration.ApplicationInfo.AppId,
             configuration.ApplicationInfo.AppName,
             configuration.ApplicationInfo.PackageName)
@@ -81,10 +82,10 @@ public class ReleaseBuilder(Context context)
 
         return ForLinux(projectPath, metadata);
     }
-    
+
     public ReleaseBuilder ForLinux(string projectPath, string appId, string appName, string packageName, string? version = null)
     {
-        var metadata = new DotnetPackaging.AppImage.Metadata.AppImageMetadata(appId, appName, packageName)
+        var metadata = new AppImageMetadata(appId, appName, packageName)
         {
             Version = Maybe<string>.From(version ?? configuration.Version)
         };
@@ -100,7 +101,7 @@ public class ReleaseBuilder(Context context)
         configuration.Platforms |= TargetPlatform.MacOs;
         return this;
     }
-    
+
     public ReleaseBuilder ForAndroid(string projectPath, AndroidDeployment.DeploymentOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.PackageName))
@@ -116,7 +117,7 @@ public class ReleaseBuilder(Context context)
         configuration.Platforms |= TargetPlatform.Android;
         return this;
     }
-    
+
     public ReleaseBuilder ForWebAssembly(string projectPath)
     {
         configuration.WebAssemblyConfig = new WebAssemblyPlatformConfig
@@ -126,13 +127,13 @@ public class ReleaseBuilder(Context context)
         configuration.Platforms |= TargetPlatform.WebAssembly;
         return this;
     }
-    
+
     // Convenience methods for common combinations
     public ReleaseBuilder ForDesktop(string desktopProjectPath)
     {
         return ForWindows(desktopProjectPath)
-               .ForLinux(desktopProjectPath)
-               .ForMacOs(desktopProjectPath);
+            .ForLinux(desktopProjectPath)
+            .ForMacOs(desktopProjectPath);
     }
 
     // Method for typical Avalonia multi-project setup
@@ -143,24 +144,24 @@ public class ReleaseBuilder(Context context)
             .ForLinux($"{baseProjectName}.Desktop")
             .ForMacOs($"{baseProjectName}.Desktop")
             .ForWebAssembly($"{baseProjectName}.Browser");
-            
+
         if (androidOptions != null)
         {
             builder = builder.ForAndroid($"{baseProjectName}.Android", androidOptions);
         }
-        
+
         return builder;
     }
-    
+
     // Method for automatic project discovery using the .sln contents rather than file system heuristics
     public ReleaseBuilder ForAvaloniaProjectsFromSolution(string solutionPath, string version, AndroidDeployment.DeploymentOptions? androidOptions = null)
     {
         context.Logger.Information("Starting Avalonia project discovery from solution: {SolutionPath}", solutionPath);
 
-        var solutionDirectory = global::System.IO.Path.GetDirectoryName(solutionPath) ?? throw new ArgumentException("Invalid solution path", nameof(solutionPath));
+        var solutionDirectory = System.IO.Path.GetDirectoryName(solutionPath) ?? throw new ArgumentException("Invalid solution path", nameof(solutionPath));
         var projects = ParseSolutionProjects(solutionPath).ToList();
 
-context.Logger.WithTag("Discovery").Debug("Parsed {Count} projects from solution", projects.Count);
+        context.Logger.WithTag("Discovery").Debug("Parsed {Count} projects from solution", projects.Count);
 
         var builder = WithVersion(version);
 
@@ -168,51 +169,51 @@ context.Logger.WithTag("Discovery").Debug("Parsed {Count} projects from solution
         var desktop = projects.FirstOrDefault(p => p.Name.EndsWith(".Desktop", StringComparison.OrdinalIgnoreCase));
         if (desktop != default)
         {
-context.Logger.WithTag("Discovery").Debug("Found Desktop project: {ProjectPath}", desktop.Path);
+            context.Logger.WithTag("Discovery").Debug("Found Desktop project: {ProjectPath}", desktop.Path);
             builder = builder.ForWindows(desktop.Path)
-                               .ForLinux(desktop.Path)
-                               .ForMacOs(desktop.Path);
+                .ForLinux(desktop.Path)
+                .ForMacOs(desktop.Path);
         }
         else
         {
-context.Logger.WithTag("Discovery").Debug("Desktop project not found in solution");
+            context.Logger.WithTag("Discovery").Debug("Desktop project not found in solution");
         }
 
         // Browser (WebAssembly)
         var browser = projects.FirstOrDefault(p => p.Name.EndsWith(".Browser", StringComparison.OrdinalIgnoreCase));
         if (browser != default)
         {
-context.Logger.WithTag("Discovery").Debug("Found Browser project: {ProjectPath}", browser.Path);
+            context.Logger.WithTag("Discovery").Debug("Found Browser project: {ProjectPath}", browser.Path);
             builder = builder.ForWebAssembly(browser.Path);
         }
         else
         {
-context.Logger.WithTag("Discovery").Debug("Browser project not found in solution");
+            context.Logger.WithTag("Discovery").Debug("Browser project not found in solution");
         }
 
         // Android
         var android = projects.FirstOrDefault(p => p.Name.EndsWith(".Android", StringComparison.OrdinalIgnoreCase));
         if (android != default && androidOptions != null)
         {
-context.Logger.WithTag("Discovery").Debug("Found Android project: {ProjectPath}", android.Path);
+            context.Logger.WithTag("Discovery").Debug("Found Android project: {ProjectPath}", android.Path);
             builder = builder.ForAndroid(android.Path, androidOptions);
         }
         else if (android != default)
         {
-context.Logger.WithTag("Discovery").Debug("Android project found but no Android options provided: {ProjectPath}", android.Path);
+            context.Logger.WithTag("Discovery").Debug("Android project found but no Android options provided: {ProjectPath}", android.Path);
         }
         else
         {
-context.Logger.WithTag("Discovery").Debug("Android project not found in solution");
+            context.Logger.WithTag("Discovery").Debug("Android project not found in solution");
         }
 
-context.Logger.WithTag("Discovery").Debug("Project discovery completed");
+        context.Logger.WithTag("Discovery").Debug("Project discovery completed");
         return builder;
     }
 
     private IEnumerable<(string Name, string Path)> ParseSolutionProjects(string solutionPath)
     {
-        var solutionDir = global::System.IO.Path.GetDirectoryName(solutionPath)!;
+        var solutionDir = System.IO.Path.GetDirectoryName(solutionPath)!;
         foreach (var line in File.ReadLines(solutionPath))
         {
             var trimmed = line.Trim();
@@ -243,13 +244,13 @@ context.Logger.WithTag("Discovery").Debug("Project discovery completed");
             }
 
             var name = nameSection.Substring(nameStart + 1, nameEnd - nameStart - 1);
-            var relative = pathSection.Trim().Trim('"').Replace('\u005c', global::System.IO.Path.DirectorySeparatorChar);
-            var fullPath = global::System.IO.Path.GetFullPath(global::System.IO.Path.Combine(solutionDir, relative));
+            var relative = pathSection.Trim().Trim('"').Replace('\u005c', System.IO.Path.DirectorySeparatorChar);
+            var fullPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(solutionDir, relative));
             yield return (name, fullPath);
         }
     }
-    
-    
+
+
     public Result<ReleaseConfiguration> Build()
     {
         if (string.IsNullOrWhiteSpace(configuration.Version))
@@ -257,13 +258,13 @@ context.Logger.WithTag("Discovery").Debug("Project discovery completed");
             context.Logger.Warn("Release build failed: Version is missing. Use WithVersion() first.");
             return Result.Failure<ReleaseConfiguration>("Version is required. Use WithVersion() first.");
         }
-        
+
         if (configuration.Platforms == TargetPlatform.None)
         {
             context.Logger.Warn("Release build failed: No platforms specified.");
             return Result.Failure<ReleaseConfiguration>("At least one platform must be specified.");
         }
-        
+
         return Result.Success(configuration);
     }
 }

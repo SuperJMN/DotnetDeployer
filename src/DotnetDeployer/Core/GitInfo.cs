@@ -15,13 +15,10 @@ public static class GitInfo
         return FindRepositoryRoot(new DirectoryInfo(startDirectory));
     }
 
-    static Result<DirectoryInfo> FindRepositoryRoot(DirectoryInfo? start)
+    private static Result<DirectoryInfo> FindRepositoryRoot(DirectoryInfo? start)
     {
         var current = start;
-        while (current != null && !Directory.Exists(global::System.IO.Path.Combine(current.FullName, ".git")))
-        {
-            current = current.Parent;
-        }
+        while (current != null && !Directory.Exists(System.IO.Path.Combine(current.FullName, ".git"))) current = current.Parent;
 
         return current != null
             ? Result.Success(current)

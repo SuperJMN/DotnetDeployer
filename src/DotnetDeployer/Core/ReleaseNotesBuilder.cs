@@ -1,13 +1,12 @@
 using System.Text;
-using System.Linq;
 
 namespace DotnetDeployer.Core;
 
 public class ReleaseNotesBuilder
 {
     private readonly ICommand command;
-    private readonly IPackageHistoryProvider packageHistoryProvider;
     private readonly Maybe<ILogger> logger;
+    private readonly IPackageHistoryProvider packageHistoryProvider;
 
     public ReleaseNotesBuilder(ICommand command, IPackageHistoryProvider packageHistoryProvider, Maybe<ILogger> logger)
     {
@@ -18,7 +17,7 @@ public class ReleaseNotesBuilder
 
     public async Task<Result<string>> Build(string projectPath, string version, CommitInfo commitInfo)
     {
-        var startDirectory = global::System.IO.Path.GetDirectoryName(projectPath) ?? projectPath;
+        var startDirectory = System.IO.Path.GetDirectoryName(projectPath) ?? projectPath;
         var repositoryResult = GitInfo.GetRepositoryRoot(startDirectory);
         if (repositoryResult.IsFailure)
         {
@@ -92,10 +91,7 @@ public class ReleaseNotesBuilder
             return builder.ToString().Trim();
         }
 
-        foreach (var change in changes)
-        {
-            builder.Append("- ").AppendLine(change);
-        }
+        foreach (var change in changes) builder.Append("- ").AppendLine(change);
 
         return builder.ToString().Trim();
     }

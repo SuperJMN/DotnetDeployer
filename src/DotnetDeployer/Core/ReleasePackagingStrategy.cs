@@ -1,13 +1,12 @@
-namespace DotnetDeployer.Core;
-
-using System.Linq;
 using DotnetDeployer.Platforms.Wasm;
-using Serilog;
+using System.Runtime.CompilerServices;
+
+namespace DotnetDeployer.Core;
 
 public class ReleasePackagingStrategy
 {
-    private readonly Packager packager;
     private readonly Maybe<ILogger> logger;
+    private readonly Packager packager;
 
     public ReleasePackagingStrategy(Packager packager, Maybe<ILogger> logger)
     {
@@ -18,28 +17,37 @@ public class ReleasePackagingStrategy
     public async Task<Result<IEnumerable<INamedByteSource>>> PackageForPlatforms(ReleaseConfiguration configuration)
     {
         var allFiles = new List<INamedByteSource>();
+        await foreach (var result in PackageStream(configuration))
+        {
+            if (result.IsFailure)
+            {
+                return Result.Failure<IEnumerable<INamedByteSource>>(result.Error);
+            }
+            allFiles.Add(result.Value);
+        }
+        return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
+    }
+
+    public async IAsyncEnumerable<Result<INamedByteSource>> PackageStream(ReleaseConfiguration configuration, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
-        
+
         // Windows packages
         if (configuration.Platforms.HasFlag(TargetPlatform.Windows))
         {
             var windowsConfig = configuration.WindowsConfig;
             if (windowsConfig == null)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(
-                    "Windows deployment options are required for Windows packaging");
+                yield return Result.Failure<INamedByteSource>("Windows deployment options are required for Windows packaging");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Packaging Windows artifacts from {Project}", windowsConfig.ProjectPath));
-            var windowsResult = await packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options);
-            if (windowsResult.IsFailure)
+            await foreach (var artifact in packager.CreateWindowsPackages(windowsConfig.ProjectPath, windowsConfig.Options))
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(windowsResult.Error);
+                yield return artifact;
             }
-
-            var windowsArtifacts = windowsResult.Value.ToList();
-            allFiles.AddRange(windowsArtifacts);
-            logger.Execute(l => l.Information("Windows packaging completed ({Count} artifacts)", windowsArtifacts.Count));
+            logger.Execute(l => l.Information("Windows packaging completed"));
         }
 
         // Linux packages
@@ -48,20 +56,16 @@ public class ReleasePackagingStrategy
             var linuxConfig = configuration.LinuxConfig;
             if (linuxConfig == null)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(
-                    "Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
+                yield return Result.Failure<INamedByteSource>("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Packaging Linux artifacts from {Project}", linuxConfig.ProjectPath));
-            var linuxResult = await packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata);
-            if (linuxResult.IsFailure)
+            await foreach (var artifact in packager.CreateLinuxPackages(linuxConfig.ProjectPath, linuxConfig.Metadata))
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(linuxResult.Error);
+                yield return artifact;
             }
-
-            var linuxArtifacts = linuxResult.Value.ToList();
-            allFiles.AddRange(linuxArtifacts);
-            logger.Execute(l => l.Information("Linux packaging completed ({Count} artifacts)", linuxArtifacts.Count));
+            logger.Execute(l => l.Information("Linux packaging completed"));
         }
 
         // macOS packages
@@ -70,20 +74,16 @@ public class ReleasePackagingStrategy
             var macConfig = configuration.MacOsConfig;
             if (macConfig == null)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(
-                    "macOS configuration is required for macOS packaging");
+                yield return Result.Failure<INamedByteSource>("macOS configuration is required for macOS packaging");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Packaging macOS artifacts from {Project}", macConfig.ProjectPath));
-            var macResult = await packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version);
-            if (macResult.IsFailure)
+            await foreach (var artifact in packager.CreateMacPackages(macConfig.ProjectPath, configuration.ApplicationInfo.AppName, configuration.Version))
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(macResult.Error);
+                yield return artifact;
             }
-
-            var macArtifacts = macResult.Value.ToList();
-            allFiles.AddRange(macArtifacts);
-            logger.Execute(l => l.Information("macOS packaging completed ({Count} artifacts)", macArtifacts.Count));
+            logger.Execute(l => l.Information("macOS packaging completed"));
         }
 
         // Android packages
@@ -92,20 +92,16 @@ public class ReleasePackagingStrategy
             var androidConfig = configuration.AndroidConfig;
             if (androidConfig == null)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(
-                    "Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
+                yield return Result.Failure<INamedByteSource>("Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Packaging Android artifacts from {Project}", androidConfig.ProjectPath));
-            var androidResult = await packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options);
-            if (androidResult.IsFailure)
+            await foreach (var artifact in packager.CreateAndroidPackages(androidConfig.ProjectPath, androidConfig.Options))
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(androidResult.Error);
+                yield return artifact;
             }
-
-            var androidArtifacts = androidResult.Value.ToList();
-            allFiles.AddRange(androidArtifacts);
-            logger.Execute(l => l.Information("Android packaging completed ({Count} artifacts)", androidArtifacts.Count));
+            logger.Execute(l => l.Information("Android packaging completed"));
         }
 
         // WebAssembly site
@@ -114,22 +110,25 @@ public class ReleasePackagingStrategy
             var wasmConfig = configuration.WebAssemblyConfig;
             if (wasmConfig == null)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(
-                    "WebAssembly configuration is required for WebAssembly packaging");
+                yield return Result.Failure<INamedByteSource>("WebAssembly configuration is required for WebAssembly packaging");
+                yield break;
             }
 
             logger.Execute(l => l.Information("Building WebAssembly site for {Project}", wasmConfig.ProjectPath));
             var wasmResult = await packager.CreateWasmSite(wasmConfig.ProjectPath);
             if (wasmResult.IsFailure)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(wasmResult.Error);
+                yield return Result.Failure<INamedByteSource>(wasmResult.Error);
+                yield break;
+            }
+
+            using (wasmResult.Value)
+            {
+                // WebAssembly output is handled by deployment flows; keep publish output scoped and cleaned.
             }
 
             // Note: WasmApp is typically deployed to GitHub Pages or similar, not included as release asset
         }
-
-        logger.Execute(l => l.Information("Packaging completed. {ArtifactCount} artifact(s) ready", allFiles.Count));
-        return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
     }
 
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)

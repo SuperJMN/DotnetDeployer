@@ -23,7 +23,7 @@ public class WindowsDeploymentTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new RecordingDotnet(Result.Success<IContainer>(container));
+        var dotnet = new RecordingDotnet(Result.Success<IPublishedDirectory>(CreatePublishDirectory(container)));
 
         var deployment = new WindowsDeployment(dotnet, new Path(sandbox.ProjectPath), new WindowsDeployment.DeploymentOptions
         {
@@ -31,7 +31,8 @@ public class WindowsDeploymentTests
             Version = "1.0.0"
         }, Maybe<ILogger>.None);
 
-        var result = await deployment.Create();
+        var list = await deployment.Create().ToListAsync();
+        var result = list.Combine();
 
         result.Should().Succeed();
         dotnet.Requests.Should().NotBeEmpty();
@@ -47,11 +48,11 @@ public class WindowsDeploymentTests
         artifactNames.Should().Contain("TestApp-1.0.0-windows-x64.msix");
     }
 
-    private sealed class RecordingDotnet(Result<IContainer> publishResult) : IDotnet
+    private sealed class RecordingDotnet(Result<IPublishedDirectory> publishResult) : IDotnet
     {
         public List<ProjectPublishRequest> Requests { get; } = new();
 
-        public Task<Result<IContainer>> Publish(ProjectPublishRequest request)
+        public Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request)
         {
             Requests.Add(request);
             return Task.FromResult(publishResult);
@@ -60,5 +61,24 @@ public class WindowsDeploymentTests
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
 
         public Task<Result<INamedByteSource>> Pack(string projectPath, string version) => Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
+    }
+
+    private static IPublishedDirectory CreatePublishDirectory(RootContainer container)
+    {
+        return new FakePublishedDirectory(container);
+    }
+
+    private sealed class FakePublishedDirectory(RootContainer container) : IPublishedDirectory
+    {
+        public string OutputPath => "/tmp/in-memory-publish";
+
+        public IEnumerable<INamedContainer> Subcontainers => container.Subcontainers;
+
+        public IEnumerable<INamedByteSource> Resources => container.Resources;
+
+        public void Dispose()
+        {
+            // No-op for test
+        }
     }
 }

@@ -2,8 +2,8 @@ namespace DotnetDeployer.Platforms.Android;
 
 internal class TempKeystoreFile(string filePath) : IDisposable
 {
+    private bool disposed;
     public string FilePath { get; } = filePath;
-    private bool disposed = false;
 
     public void Dispose()
     {

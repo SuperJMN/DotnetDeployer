@@ -1,13 +1,15 @@
+using System.Runtime.InteropServices;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.AppImage;
 using DotnetPackaging.AppImage.Core;
 using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Deb;
-using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using DotnetPackaging.Flatpak;
-using DotnetPackaging.Rpm;
 using DotnetPackaging.Publish;
+using DotnetPackaging.Rpm;
+using Architecture = DotnetPackaging.Architecture;
+using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
 
 namespace DotnetDeployer.Platforms.Linux;
@@ -20,27 +22,30 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         [Architecture.Arm64] = ("linux-arm64", "arm64")
     };
 
-    public Task<Result<IEnumerable<INamedByteSource>>> Create()
+    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
     {
         // Prefer building for the current machine's architecture to avoid cross-publish failures
-        var current = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        var current = RuntimeInformation.ProcessArchitecture;
         IEnumerable<Architecture> targetArchitectures = current switch
         {
             RuntimeArch.Arm64 => new[] { Architecture.Arm64 },
             _ => new[] { Architecture.X64 }
         };
 
-        return targetArchitectures
-            .Select(CreateForArchitecture)
-            .CombineInOrder()
-            .Map(results => results.SelectMany(files => files));
+        foreach (var architecture in targetArchitectures)
+        {
+            await foreach (var artifactResult in CreateForArchitecture(architecture))
+            {
+                yield return artifactResult;
+            }
+        }
     }
 
-    private Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(Architecture architecture)
+    private async IAsyncEnumerable<Result<INamedByteSource>> CreateForArchitecture(Architecture architecture)
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
-publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
+        publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architecture}", architecture));
 
         var request = new ProjectPublishRequest(projectPath)
         {
@@ -50,11 +55,21 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
             MsBuildProperties = new Dictionary<string, string>()
         };
 
-        return dotnet.Publish(request)
-            .Bind(container => BuildArtifacts(container, architecture));
+        var containerResult = await dotnet.Publish(request);
+        if (containerResult.IsFailure)
+        {
+            yield return Result.Failure<INamedByteSource>(containerResult.Error);
+            yield break;
+        }
+
+        using var container = containerResult.Value;
+        await foreach (var artifact in BuildArtifacts(container, architecture))
+        {
+            yield return artifact;
+        }
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
+    private async IAsyncEnumerable<Result<INamedByteSource>> BuildArtifacts(IContainer container, Architecture architecture)
     {
         var version = metadata.Version.GetValueOrDefault("1.0.0");
         var baseFileName = $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
@@ -64,49 +79,58 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         var executableResult = await BuildUtils.GetExecutable(container, options);
         if (executableResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(executableResult.Error);
+            yield return Result.Failure<INamedByteSource>(executableResult.Error);
+            yield break;
         }
 
         var executable = executableResult.Value;
         var packageMetadataResult = await CreatePackageMetadata(container, options, architecture, executable, metadata.PackageName);
         if (packageMetadataResult.IsFailure)
         {
-            return packageMetadataResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            yield return Result.Failure<INamedByteSource>(packageMetadataResult.Error);
+            yield break;
         }
 
         var packageMetadata = packageMetadataResult.Value;
-
-        var results = new List<INamedByteSource>();
 
         var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
         appImageLogger.Execute(log => log.Information("Creating AppImage"));
         var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
         if (appImageResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
+            yield return Result.Failure<INamedByteSource>(appImageResult.Error);
         }
-        results.Add(appImageResult.Value);
-        appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
+        else
+        {
+            appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
+            yield return Result.Success(appImageResult.Value);
+        }
 
         var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
         flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
         var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
         if (flatpakResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
+            yield return Result.Failure<INamedByteSource>(flatpakResult.Error);
         }
-        results.Add(flatpakResult.Value);
-        flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
+        else
+        {
+            flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
+            yield return Result.Success(flatpakResult.Value);
+        }
 
         var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
         debLogger.Execute(log => log.Information("Creating DEB"));
         var debResult = await CreateDeb(container, architecture, $"{baseFileName}.deb", executable);
         if (debResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
+            yield return Result.Failure<INamedByteSource>(debResult.Error);
         }
-        results.Add(debResult.Value);
-        debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
+        else
+        {
+            debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
+            yield return Result.Success(debResult.Value);
+        }
 
         var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
         rpmLogger.Execute(log => log.Information("Creating RPM"));
@@ -117,11 +141,9 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
         }
         else
         {
-            results.Add(rpmResult.Value);
             rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
+            yield return Result.Success(rpmResult.Value);
         }
-
-        return Result.Success<IEnumerable<INamedByteSource>>(results);
     }
 
     private async Task<Result<INamedByteSource>> CreateAppImage(IContainer container, Architecture architecture, string fileName)
@@ -348,25 +370,21 @@ publishLogger.Execute(log => log.Debug("Publishing Linux packages for {Architect
     private static IEnumerable<Uri> ParseUris(IEnumerable<string> values)
     {
         foreach (var value in values)
-        {
             if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
             {
                 yield return uri;
             }
-        }
     }
 
     private static bool TryParseEnum<TEnum>(string candidate, out TEnum value) where TEnum : struct, Enum
     {
         var normalized = NormalizeEnumCandidate(candidate);
         foreach (var name in Enum.GetNames(typeof(TEnum)))
-        {
             if (string.Equals(name, normalized, StringComparison.OrdinalIgnoreCase))
             {
                 value = Enum.Parse<TEnum>(name, true);
                 return true;
             }
-        }
 
         value = default;
         return false;

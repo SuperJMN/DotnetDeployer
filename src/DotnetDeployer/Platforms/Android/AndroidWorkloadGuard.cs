@@ -1,5 +1,3 @@
-using System;
-
 namespace DotnetDeployer.Platforms.Android;
 
 public interface IAndroidWorkloadGuard

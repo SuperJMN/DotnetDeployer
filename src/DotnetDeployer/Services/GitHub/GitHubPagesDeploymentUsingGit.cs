@@ -6,6 +6,7 @@ namespace DotnetDeployer.Services.GitHub;
 
 public class GitHubPagesDeploymentUsingGit(WasmApp wasmApp, Context context, string repositoryOwner, string repositoryName, string apiKey, string authorName, string authorEmail, string branchName = "master")
 {
+    private readonly FileSystem fileSystem = new();
     public Context Context { get; } = context;
     public string RepositoryOwner { get; } = repositoryOwner;
     public string RepositoryName { get; } = repositoryName;
@@ -13,8 +14,6 @@ public class GitHubPagesDeploymentUsingGit(WasmApp wasmApp, Context context, str
     public string ApiKey { get; } = apiKey;
     public string AuthorName { get; } = authorName;
     public string AuthorEmail { get; } = authorEmail;
-
-    private readonly FileSystem fileSystem = new();
 
     public Task<Result> Publish()
     {
@@ -38,7 +37,7 @@ public class GitHubPagesDeploymentUsingGit(WasmApp wasmApp, Context context, str
     {
         var nojekyll = new ResourceWithPath(Path.Empty, new Resource(".nojekyll", ByteSource.FromString("No Jekyll file to disable Jekyll processing in GitHub Pages.")));
         var resources = wasmApp.Contents.ResourcesWithPathsRecursive().Append(nojekyll);
-        
+
         foreach (var file in resources)
         {
             var targetPath = System.IO.Path.Combine(repoDir.FullName, file.FullPath().ToString());
@@ -68,7 +67,7 @@ public class GitHubPagesDeploymentUsingGit(WasmApp wasmApp, Context context, str
         // Crea un commit
         var commitCommand = $"commit --author=\"{AuthorName} <{AuthorEmail}>\" " +
                             $"-m \"Site update: {DateTime.UtcNow}\"";
-        
+
         var commitResult = await Context.Command.Execute(
             "git",
             commitCommand,
@@ -89,5 +88,4 @@ public class GitHubPagesDeploymentUsingGit(WasmApp wasmApp, Context context, str
 
         return pushResult.IsSuccess ? Result.Success() : Result.Failure(pushResult.Error);
     }
-
 }

@@ -32,8 +32,16 @@ public static class LoggerExtensions
 
     public static string ToArchLabel(this Architecture arch)
     {
-        if (Equals(arch, Architecture.X64)) return "X64";
-        if (Equals(arch, Architecture.Arm64)) return "ARM64";
+        if (Equals(arch, Architecture.X64))
+        {
+            return "X64";
+        }
+
+        if (Equals(arch, Architecture.Arm64))
+        {
+            return "ARM64";
+        }
+
         return arch.ToString().ToUpperInvariant();
     }
 

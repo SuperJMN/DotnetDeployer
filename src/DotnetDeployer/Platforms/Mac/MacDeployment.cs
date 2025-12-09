@@ -1,4 +1,5 @@
 using DotnetDeployer.Core;
+using DotnetPackaging.Dmg;
 using DotnetPackaging.Publish;
 using DpArch = DotnetPackaging.Architecture;
 
@@ -6,26 +7,29 @@ namespace DotnetDeployer.Platforms.Mac;
 
 public class MacDeployment(IDotnet dotnet, string projectPath, string appName, string version, Maybe<ILogger> logger)
 {
-private static readonly Dictionary<DpArch, (string Runtime, string Suffix)> MacArchitecture = new()
+    private static readonly Dictionary<DpArch, (string Runtime, string Suffix)> MacArchitecture = new()
     {
         [DpArch.X64] = ("osx-x64", "x64"),
         [DpArch.Arm64] = ("osx-arm64", "arm64")
     };
 
-    public Task<Result<IEnumerable<INamedByteSource>>> Create()
+    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
     {
         // Build for both supported macOS architectures regardless of host
         IEnumerable<DpArch> targetArchitectures = new[] { DpArch.Arm64, DpArch.X64 };
 
-        return targetArchitectures
-            .Select(CreateForArchitecture)
-            .CombineInOrder()
-            .Map(results => results.SelectMany(files => files));
+        foreach (var architecture in targetArchitectures)
+        {
+            await foreach (var artifact in CreateForArchitecture(architecture))
+            {
+                yield return artifact;
+            }
+        }
     }
 
-private async Task<Result<IEnumerable<INamedByteSource>>> CreateForArchitecture(DpArch architecture)
+    private async IAsyncEnumerable<Result<INamedByteSource>> CreateForArchitecture(DpArch architecture)
     {
-logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
+        logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
 
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("macOS", "Publish", archLabel);
@@ -39,49 +43,64 @@ logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", 
             MsBuildProperties = new Dictionary<string, string>()
         };
 
-publishLogger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
+        publishLogger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
         var publishResult = await dotnet.Publish(request);
         if (publishResult.IsFailure)
         {
-            return publishResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            yield return Result.Failure<INamedByteSource>(publishResult.Error);
+            yield break;
         }
 
-        var container = publishResult.Value;
+        using var container = publishResult.Value;
 
         // Materialize publish output to temp directory
         var publishCopyDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macpub-{Guid.NewGuid():N}");
         var writeResult = await container.WriteTo(publishCopyDir);
         if (writeResult.IsFailure)
         {
-            return writeResult.ConvertFailure<IEnumerable<INamedByteSource>>();
+            yield return Result.Failure<INamedByteSource>(writeResult.Error);
+            yield break;
         }
 
         // Create DMG into temp file and return as resource
         var tempDmg = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
+        Result<INamedByteSource> result;
         try
         {
-dmgLogger.Execute(log => log.Information("Creating DMG"));
-await DotnetPackaging.Dmg.DmgIsoBuilder.Create(publishCopyDir, tempDmg, appName);
+            dmgLogger.Execute(log => log.Information("Creating DMG"));
+            await DmgHfsBuilder.Create(publishCopyDir, tempDmg, appName);
 
-var bytes = await File.ReadAllBytesAsync(tempDmg);
-var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
-dmgLogger.Execute(log => log.Information("Created {File}", $"{baseName}.dmg"));
-            var resource = (INamedByteSource)new Resource($"{baseName}.dmg", Zafiro.DivineBytes.ByteSource.FromBytes(bytes));
-            return Result.Success<IEnumerable<INamedByteSource>>([resource]);
+            var bytes = await File.ReadAllBytesAsync(tempDmg);
+            var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
+            dmgLogger.Execute(log => log.Information("Created {File}", $"{baseName}.dmg"));
+            var resource = (INamedByteSource)new Resource($"{baseName}.dmg", ByteSource.FromBytes(bytes));
+            result = Result.Success(resource);
         }
         catch (Exception ex)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>($"Failed to build DMG: {ex.Message}");
+            result = Result.Failure<INamedByteSource>($"Failed to build DMG: {ex.Message}");
         }
         finally
         {
-            try 
-            { 
-                if (Directory.Exists(publishCopyDir)) Directory.Delete(publishCopyDir, true);
-                if (File.Exists(tempDmg)) File.Delete(tempDmg); 
-            } 
-            catch { /* ignore */ }
+            try
+            {
+                if (Directory.Exists(publishCopyDir))
+                {
+                    Directory.Delete(publishCopyDir, true);
+                }
+
+                if (File.Exists(tempDmg))
+                {
+                    File.Delete(tempDmg);
+                }
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
+
+        yield return result;
     }
 
     private static string Sanitize(string name)

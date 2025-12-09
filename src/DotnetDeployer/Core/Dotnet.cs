@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using DotnetPackaging.Publish;
 using Zafiro.DivineBytes.System.IO;
 
@@ -5,11 +6,10 @@ namespace DotnetDeployer.Core;
 
 public class Dotnet : IDotnet
 {
-    public ICommand Command { get; }
+    private readonly FileSystem filesystem = new();
     private readonly Maybe<ILogger> logger;
-    private readonly System.IO.Abstractions.FileSystem filesystem = new();
-    private readonly DotnetPublisher publisher = new();
     private readonly IPackageHistoryProvider packageHistoryProvider;
+    private readonly DotnetPublisher publisher = new();
     private readonly ReleaseNotesBuilder releaseNotesBuilder;
 
     public Dotnet(ICommand command, Maybe<ILogger> logger, IPackageHistoryProvider? packageHistoryProvider = null)
@@ -20,9 +20,11 @@ public class Dotnet : IDotnet
         releaseNotesBuilder = new ReleaseNotesBuilder(command, this.packageHistoryProvider, logger);
     }
 
-    public async Task<Result<IContainer>> Publish(ProjectPublishRequest request)
+    public ICommand Command { get; }
+
+    public async Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request)
     {
-logger.Execute(log =>
+        logger.Execute(log =>
             log.Debug(
                 "Publishing project {ProjectPath} with runtime {Runtime} (SelfContained: {SelfContained}, SingleFile: {SingleFile})",
                 request.ProjectPath,
@@ -40,16 +42,16 @@ logger.Execute(log =>
                     request.ProjectPath,
                     error));
 
-            return Result.Failure<IContainer>(error);
+            return Result.Failure<IPublishedDirectory>(error);
         }
 
-logger.Execute(log =>
+        logger.Execute(log =>
             log.Debug(
                 "Published project {ProjectPath} to {OutputDirectory}",
                 request.ProjectPath,
                 publishResult.Value.OutputDirectory));
 
-        return Result.Success<IContainer>(publishResult.Value.Container);
+        return Result.Success<IPublishedDirectory>(new PublishedDirectory(publishResult.Value.OutputDirectory, logger));
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)
@@ -74,7 +76,7 @@ logger.Execute(log =>
             throw new ArgumentNullException(nameof(projectPath), "Project path to pack cannot be null.");
         }
 
-        var directory = global::System.IO.Path.GetDirectoryName(projectPath) ?? projectPath;
+        var directory = System.IO.Path.GetDirectoryName(projectPath) ?? projectPath;
 
         return GitInfo.GetCommitInfo(directory, Command)
             .Bind(commitInfo => releaseNotesBuilder.Build(projectPath, version, commitInfo)
@@ -108,7 +110,11 @@ logger.Execute(log =>
 
     internal static string NormalizeReleaseNotes(string message)
     {
-        if (string.IsNullOrEmpty(message)) return string.Empty;
+        if (string.IsNullOrEmpty(message))
+        {
+            return string.Empty;
+        }
+
         // Preserve structure: unify newlines and encode them as literal \n to keep intent without breaking CLI parsing
         var normalized = message.Replace("\r\n", "\n").Replace("\r", "\n");
         // Replace double quotes to avoid breaking the surrounding quotes used in -p:Property="..."

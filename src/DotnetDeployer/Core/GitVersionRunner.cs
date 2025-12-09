@@ -1,11 +1,14 @@
-namespace DotnetDeployer.Core;
-
 using System.Text.Json;
 using NuGet.Versioning;
+
+namespace DotnetDeployer.Core;
+
 using Path = System.IO.Path;
 
 public static class GitVersionRunner
 {
+    private static readonly string[] PreferredFields = ["NuGetVersionV2", "NuGetVersion", "MajorMinorPatch", "SemVer", "FullSemVer"];
+
     public static async Task<Result<string>> Run(string? startPath = null)
     {
         var repositoryResult = FindGitRoot(startPath ?? Environment.CurrentDirectory);
@@ -46,8 +49,6 @@ public static class GitVersionRunner
         return result.IsSuccess ? Result.Success() : Result.Failure(result.Error);
     }
 
-    private static readonly string[] PreferredFields = ["NuGetVersionV2", "NuGetVersion", "MajorMinorPatch", "SemVer", "FullSemVer"];
-
     private static async Task<Result<string>> Execute(Command command, string repoPath)
     {
         try
@@ -63,7 +64,6 @@ public static class GitVersionRunner
                 using var document = JsonDocument.Parse(result.Value);
                 var root = document.RootElement;
                 foreach (var field in PreferredFields)
-                {
                     if (root.TryGetProperty(field, out var property))
                     {
                         var value = property.GetString();
@@ -72,7 +72,6 @@ public static class GitVersionRunner
                             return Result.Success(value);
                         }
                     }
-                }
 
                 return Result.Failure<string>("No version fields found in GitVersion output");
             }

@@ -43,12 +43,12 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         Context.Logger.Debug("Publishing projects: {@Projects}", projectToPublish);
 
         var packagesResult = await projectToPublish
-            .Select(project =>
-            {
-                Context.Logger.Debug("Packing {Project}", project);
-                return packager.CreateNugetPackage(project, version);
-            })
-            .CombineSequentially()
+                .Select(project =>
+                {
+                    Context.Logger.Debug("Packing {Project}", project);
+                    return packager.CreateNugetPackage(project, version);
+                })
+                .CombineSequentially()
             ;
 
         if (packagesResult.IsFailure)
@@ -121,33 +121,56 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // New builder-based method for creating releases
-    public Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
+    public async Task<Result> CreateGitHubRelease(ReleaseConfiguration releaseConfig, GitHubRepositoryConfig repositoryConfig, ReleaseData releaseData, bool dryRun = false)
     {
         var resolved = releaseData.ReplaceVersion(releaseConfig.Version);
-        return packagingStrategy.PackageForPlatforms(releaseConfig)
-            .Bind(async files =>
+
+        if (dryRun)
+        {
+            Context.Logger.Information("Dry run enabled for release {ReleaseName} ({Tag})", releaseData.ReleaseName, releaseData.Tag);
+            await foreach (var fileResult in packagingStrategy.PackageStream(releaseConfig))
             {
-                if (dryRun)
+                if (fileResult.IsFailure)
                 {
-                    Context.Logger.Information("Dry run enabled for release {ReleaseName} ({Tag})", releaseData.ReleaseName, releaseData.Tag);
-                    Context.Logger.Debug("Dry run artifacts: {@Files}", files.Select(file => file.Name));
-                    return Result.Success();
+                    return Result.Failure(fileResult.Error);
                 }
 
-                // Create GitHub release with collected artifacts
-                var releaseResult = await CreateGitHubRelease(files.ToList(), repositoryConfig, resolved);
-                if (releaseResult.IsFailure)
-                {
-                    return releaseResult;
-                }
+                var file = fileResult.Value;
+                Context.Logger.Debug("Dry run artifact: {File}", file.Name);
+            }
+            return Result.Success();
+        }
 
-                if (releaseResult.IsSuccess)
-                {
-                    Context.Logger.Information("GitHub release {ReleaseName} published successfully", resolved.ReleaseName);
-                }
+        var gitHubRelease = new GitHubReleaseUsingGitHubApi(Context, Enumerable.Empty<INamedByteSource>(), repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
+        var releaseResult = await gitHubRelease.CreateReleaseOnly(resolved.Tag, resolved.ReleaseName, resolved.ReleaseBody, resolved.IsDraft, resolved.IsPrerelease);
 
-                return releaseResult;
-            });
+        if (releaseResult.IsFailure)
+        {
+            return Result.Failure(releaseResult.Error);
+        }
+
+        var release = releaseResult.Value;
+        var client = gitHubRelease.CreateClient();
+
+        await foreach (var fileResult in packagingStrategy.PackageStream(releaseConfig))
+        {
+            if (fileResult.IsFailure)
+            {
+                // Consider if we should abort or continue. For now, aborting seems safer. 
+                // We might want to delete the release created? Keeping it simple for now.
+                return Result.Failure(fileResult.Error);
+            }
+
+            var file = fileResult.Value;
+            var uploadResult = await gitHubRelease.UploadAsset(client, release, file);
+            if (uploadResult.IsFailure)
+            {
+                return Result.Failure(uploadResult.Error);
+            }
+        }
+
+        Context.Logger.Information("GitHub release {ReleaseName} published successfully", resolved.ReleaseName);
+        return Result.Success();
     }
 
     // Convenience overload to accept Result<ReleaseConfiguration>
@@ -168,6 +191,11 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         return packagingStrategy.PackageForPlatforms(releaseConfig);
     }
 
+    public IAsyncEnumerable<Result<INamedByteSource>> BuildArtifactsStream(ReleaseConfiguration releaseConfig)
+    {
+        return packagingStrategy.PackageStream(releaseConfig);
+    }
+
     // Expose WASM site creation
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)
     {
@@ -178,12 +206,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     {
         return packagingStrategy.CreateWasmSite(projectPath)
             .TapError(error => Context.Logger.Error("Failed to build WebAssembly site: {Error}", error))
-            .Bind(site =>
-            {
-                Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repository}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
-                return publisher.PublishToGitHubPages(site, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey)
-                    .TapError(error => Context.Logger.Error("GitHub Pages deployment failed: {Error}", error));
-            });
+            .Bind(site => PublishPages(site, repositoryConfig));
     }
 
     // Convenience method for automatic Avalonia project discovery
@@ -201,5 +224,15 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
             .Build();
 
         return releaseConfigResult.Bind(rc => CreateGitHubRelease(rc, repositoryConfig, releaseData));
+    }
+
+    private async Task<Result> PublishPages(WasmApp site, GitHubRepositoryConfig repositoryConfig)
+    {
+        using (site)
+        {
+            Context.Logger.Information("Publishing WebAssembly site to GitHub Pages for {Owner}/{Repository}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName);
+            var publishResult = await publisher.PublishToGitHubPages(site, repositoryConfig.OwnerName, repositoryConfig.RepositoryName, repositoryConfig.ApiKey);
+            return publishResult.TapError(error => Context.Logger.Error("GitHub Pages deployment failed: {Error}", error));
+        }
     }
 }

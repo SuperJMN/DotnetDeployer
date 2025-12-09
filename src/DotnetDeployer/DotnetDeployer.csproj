@@ -1,21 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
-    
-    <ItemGroup>
-        <PackageReference Include="Octokit" />
-        <PackageReference Include="DotnetPackaging" />
-        <PackageReference Include="DotnetPackaging.AppImage" />
-        <PackageReference Include="DotnetPackaging.Deb" />
-        <PackageReference Include="DotnetPackaging.Flatpak" />
-        <PackageReference Include="DotnetPackaging.Msix" />
-        <PackageReference Include="DotnetPackaging.Rpm" />
-        <PackageReference Include="DotnetPackaging.Dmg" />
-        <PackageReference Include="DotnetPackaging.Exe" />
-    </ItemGroup>
-
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DotnetPackaging.Exe" />
+    <PackageReference Include="Octokit" />
+    <PackageReference Include="DotnetPackaging.AppImage" />
+    <PackageReference Include="DotnetPackaging.Deb" />
+    <PackageReference Include="DotnetPackaging.Flatpak" />
+    <PackageReference Include="DotnetPackaging.Msix" />
+    <PackageReference Include="DotnetPackaging.Rpm" />
+    <PackageReference Include="DotnetPackaging.Dmg" />
+  </ItemGroup>
 </Project>

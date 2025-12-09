@@ -3,7 +3,6 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
-using System.Linq;
 using NuGet.Versioning;
 
 namespace DotnetDeployer.Core;
@@ -76,7 +75,7 @@ public class NugetPackageHistoryProvider : IPackageHistoryProvider
             var document = XDocument.Load(projectPath);
             var packageId = ReadElementValue(document, "PackageId")
                             ?? ReadElementValue(document, "AssemblyName")
-                            ?? global::System.IO.Path.GetFileNameWithoutExtension(projectPath);
+                            ?? System.IO.Path.GetFileNameWithoutExtension(projectPath);
 
             if (string.IsNullOrWhiteSpace(packageId))
             {
@@ -153,7 +152,7 @@ public class NugetPackageHistoryProvider : IPackageHistoryProvider
             await packageStream.CopyToAsync(copy);
             copy.Position = 0;
 
-            using var archive = new ZipArchive(copy, ZipArchiveMode.Read, leaveOpen: false);
+            using var archive = new ZipArchive(copy, ZipArchiveMode.Read, false);
             var nuspecEntry = archive.Entries.FirstOrDefault(entry => entry.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase));
             if (nuspecEntry == null)
             {
