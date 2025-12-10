@@ -8,7 +8,7 @@ using DotnetPackaging.Exe;
 using DotnetPackaging.Publish;
 using FluentAssertions;
 using System.IO.Abstractions;
-using Zafiro.DivineBytes;
+// using Zafiro.DivineBytes; already there
 using Zafiro.DivineBytes.System.IO;
 
 namespace DotnetDeployer.Tests;
@@ -111,8 +111,8 @@ public class WindowsPackagersDetachmentTests
 
     private sealed class NoopDotnet : IDotnet
     {
-        public Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request) =>
-            Task.FromResult(Result.Failure<IPublishedDirectory>("Not used in this test"));
+        public Task<Result<IDisposableContainer>> Publish(ProjectPublishRequest request) =>
+            Task.FromResult(Result.Failure<IDisposableContainer>("Not used in this test"));
 
         public Task<Result> Push(string packagePath, string apiKey) => Task.FromResult(Result.Success());
 

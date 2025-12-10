@@ -4,6 +4,7 @@
     <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.6.0" />
     <PackageVersion Include="DotnetPackaging" Version="9.0.1" />
     <PackageVersion Include="DotnetPackaging.AppImage" Version="9.0.1" />
     <PackageVersion Include="DotnetPackaging.Flatpak" Version="9.0.1" />

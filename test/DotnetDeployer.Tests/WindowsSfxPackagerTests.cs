@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text;
 using DotnetDeployer.Core;
+using Zafiro.DivineBytes;
 using DotnetDeployer.Platforms.Windows;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
@@ -22,7 +23,7 @@ public class WindowsSfxPackagerTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new RecordingDotnet(Result.Success<IPublishedDirectory>(new FakePublishedDirectory(container)));
+        var dotnet = new RecordingDotnet(Result.Success<IDisposableContainer>(new FakeDisposableContainer(container)));
         var packager = new WindowsSfxPackager(dotnet, Maybe<ILogger>.None);
 
         var result = await packager.Create(new Path(sandbox.ProjectPath), Architecture.X64);
@@ -56,7 +57,7 @@ public class WindowsSfxPackagerTests
         };
 
         var container = files.ToRootContainer().Value;
-        var dotnet = new RecordingDotnet(Result.Success<IPublishedDirectory>(new FakePublishedDirectory(container)));
+        var dotnet = new RecordingDotnet(Result.Success<IDisposableContainer>(new FakeDisposableContainer(container)));
         var packager = new WindowsSfxPackager(dotnet, Maybe<ILogger>.None);
 
         var result = await packager.Create(new Path(sandbox.ProjectPath), Architecture.Arm64, "CustomName");
@@ -70,11 +71,11 @@ public class WindowsSfxPackagerTests
         request.Rid.Value.Should().Be("win-arm64");
     }
 
-    private sealed class RecordingDotnet(Result<IPublishedDirectory> publishResult) : IDotnet
+    private sealed class RecordingDotnet(Result<IDisposableContainer> publishResult) : IDotnet
     {
         public List<ProjectPublishRequest> Requests { get; } = new();
 
-        public Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request)
+        public Task<Result<IDisposableContainer>> Publish(ProjectPublishRequest request)
         {
             Requests.Add(request);
             return Task.FromResult(publishResult);
@@ -86,10 +87,8 @@ public class WindowsSfxPackagerTests
             Task.FromResult(Result.Failure<INamedByteSource>("Not implemented"));
     }
 
-    private sealed class FakePublishedDirectory(RootContainer container) : IPublishedDirectory
+    private sealed class FakeDisposableContainer(RootContainer container) : IDisposableContainer
     {
-        public string OutputPath => "/tmp/in-memory-publish";
-
         public IEnumerable<INamedContainer> Subcontainers => container.Subcontainers;
 
         public IEnumerable<INamedByteSource> Resources => container.Resources;

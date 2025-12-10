@@ -1,5 +1,6 @@
 using DotnetDeployer.Core;
 using DotnetPackaging.Publish;
+using Zafiro.DivineBytes;
 using File = System.IO.File;
 
 namespace DotnetDeployer.Platforms.Android;
@@ -154,7 +155,14 @@ public class AndroidDeployment(IDotnet dotnet, Path projectPath, AndroidDeployme
             renLogger.Execute(log => log.Debug("Renaming Android package '{OriginalName}' to '{FinalName}'", originalName, finalName));
             renLogger.Execute(log => log.Information("Creating {File}", finalName));
             
-            yield return Result.Success<INamedByteSource>(new Resource(finalName, resource));
+            var memoryResource = await ByteSourceDetacher.Detach(resource, finalName);
+            if (memoryResource.IsFailure)
+            {
+                yield return Result.Failure<INamedByteSource>(memoryResource.Error);
+                continue;
+            }
+
+            yield return Result.Success<INamedByteSource>(new Resource(finalName, memoryResource.Value));
         }
     }
 

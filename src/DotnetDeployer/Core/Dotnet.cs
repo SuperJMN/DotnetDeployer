@@ -22,7 +22,7 @@ public class Dotnet : IDotnet
 
     public ICommand Command { get; }
 
-    public async Task<Result<IPublishedDirectory>> Publish(ProjectPublishRequest request)
+    public async Task<Result<IDisposableContainer>> Publish(ProjectPublishRequest request)
     {
         logger.Execute(log =>
             log.Debug(
@@ -42,16 +42,15 @@ public class Dotnet : IDotnet
                     request.ProjectPath,
                     error));
 
-            return Result.Failure<IPublishedDirectory>(error);
+            return Result.Failure<IDisposableContainer>(error);
         }
 
         logger.Execute(log =>
             log.Debug(
-                "Published project {ProjectPath} to {OutputDirectory}",
-                request.ProjectPath,
-                publishResult.Value.OutputDirectory));
+                "Published project {ProjectPath}",
+                request.ProjectPath));
 
-        return Result.Success<IPublishedDirectory>(new PublishedDirectory(publishResult.Value.OutputDirectory, logger));
+        return Result.Success(publishResult.Value);
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)
