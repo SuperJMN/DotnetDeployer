@@ -3,7 +3,6 @@ using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
 using DotnetPackaging.Publish;
 using Zafiro.DivineBytes;
-using Zafiro.Reactive;
 
 namespace DotnetDeployer.Platforms.Android;
 
@@ -11,20 +10,10 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
 {
     private const string AndroidRuntimeIdentifier = "android-arm64";
 
-    public IObservable<Result<INamedByteSource>> GetPacks()
+    public async Task<Result<IAndroidDeploymentSession>> Build()
     {
-        return ObservableFactory.UsingAsync(Publish, EmitPackages);
-    }
-
-    private IObservable<Result<INamedByteSource>> EmitPackages(IContainer container)
-    {
-        var resources = container.Resources.ToList();
-        logger.Execute(l => l.Debug("Found {Count} resources in container: {Resources}", resources.Count, string.Join(", ", resources.Select(x => x.Name))));
-        
-        return resources
-            .ToObservable()
-            .Where(x => x.Name.EndsWith("-Signed.apk"))
-            .Select(Result.Success);
+        var result = await Publish();
+        return result.Map(container => (IAndroidDeploymentSession)new AndroidDeploymentSession(container, logger));
     }
 
     private Task<Result<IDisposableContainer>> Publish()

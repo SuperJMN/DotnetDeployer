@@ -33,9 +33,15 @@ public class NewAndroidDeploymentTests(ITestOutputHelper outputHelper)
         var publisher = new DotnetPublisher(command, Maybe<ILogger>.From(logger));
         var sut = new NewAndroidDeployment(publisher, projectPath, options, Maybe<ILogger>.From(logger));
 
-        await sut.GetPacks()
-            .Successes()
-            .SelectMany(source => Observable.FromAsync(() => source.WriteTo(source.Name))).ToList();
+        var buildResult = await sut.Build();
+        buildResult.Should().Succeed();
+        
+        using var session = buildResult.Value;
+        var packages = await session.Packages.ToList();
+
+        packages.Should().HaveCount(1);
+        packages[0].Should().Succeed();
+        packages[0].Value.Name.Should().EndWith(".apk");
     }
 
     private static async Task CreateTestProject(Command command, string tempDir)
