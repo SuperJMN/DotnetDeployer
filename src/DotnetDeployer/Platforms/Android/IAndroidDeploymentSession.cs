@@ -3,7 +3,8 @@ namespace DotnetDeployer.Platforms.Android;
 using Zafiro.DivineBytes;
 using CSharpFunctionalExtensions;
 
-public interface IAndroidDeploymentSession : IDisposable
+using DotnetDeployer.Core;
+
+public interface IAndroidDeploymentSession : IDeploymentSession
 {
-    IObservable<Result<INamedByteSource>> Packages { get; }
 }

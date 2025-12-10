@@ -46,7 +46,10 @@ public class WindowsDeploymentTests
             Version = "1.0.0"
         }, Maybe<ILogger>.None);
 
-        var list = await deployment.Create().ToListAsync();
+        var buildResult = await deployment.Build();
+        buildResult.Should().Succeed();
+        using var session = buildResult.Value;
+        var list = await session.Packages.ToList();
         var result = list.Combine();
 
         result.Should().Succeed();

@@ -2,6 +2,8 @@ using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
 using Zafiro.CSharpFunctionalExtensions;
+using System.Reactive.Disposables;
+using System.Reactive.Linq;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -18,20 +20,28 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
     private readonly WindowsSfxPackager sfxPackager = new(dotnet, logger);
 
-    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
+    public async Task<Result<IDeploymentSession>> Build()
     {
+        var disposables = new CompositeDisposable();
         IEnumerable<Architecture> supportedArchitectures = [Architecture.Arm64, Architecture.X64];
+        var builds = new List<IObservable<Result<INamedByteSource>>>();
 
         foreach (var architecture in supportedArchitectures)
         {
-            await foreach (var artifact in CreateFor(architecture, options))
+            var buildResult = await BuildFor(architecture, options, disposables);
+            if (buildResult.IsFailure)
             {
-                yield return artifact;
+                disposables.Dispose();
+                return Result.Failure<IDeploymentSession>(buildResult.Error);
             }
+            
+            builds.Add(buildResult.Value);
         }
+        
+        return new DeploymentSession(System.Reactive.Linq.Observable.Merge(builds), disposables);
     }
 
-    private async IAsyncEnumerable<Result<INamedByteSource>> CreateFor(Architecture architecture, DeploymentOptions deploymentOptions)
+    private async Task<Result<IObservable<Result<INamedByteSource>>>> BuildFor(Architecture architecture, DeploymentOptions deploymentOptions, CompositeDisposable disposables)
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Windows", "Publish", archLabel);
@@ -40,66 +50,49 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
         {
-            yield return Result.Failure<INamedByteSource>(iconResult.Error);
-            yield break;
+            return Result.Failure<IObservable<Result<INamedByteSource>>>(iconResult.Error);
         }
 
         var icon = iconResult.Value;
+        icon.Execute(i => disposables.Add(Disposable.Create(() => i.Cleanup())));
+        
         var request = CreateRequest(architecture, deploymentOptions, icon);
         icon.Tap(value => publishLogger.Execute(log => log.Debug("Using icon '{IconPath}' for Windows packaging", value.Path)));
         var baseName = $"{deploymentOptions.PackageName}-{deploymentOptions.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
         var runtimeIdentifier = WindowsArchitecture[architecture].Runtime;
         var archSuffix = WindowsArchitecture[architecture].Suffix;
 
-        try
+        var publishResult = await dotnet.Publish(request);
+        if (publishResult.IsFailure)
         {
-            var publishResult = await dotnet.Publish(request);
-            if (publishResult.IsFailure)
-            {
-                yield return Result.Failure<INamedByteSource>(publishResult.Error);
-                yield break;
-            }
-
-            using var directory = publishResult.Value;
-
-            var executableResult = FindExecutable(directory);
-            if (executableResult.IsFailure)
-            {
-                yield return Result.Failure<INamedByteSource>(executableResult.Error);
-                yield break;
-            }
-
-            var executable = executableResult.Value;
-            var sfxResult = await sfxPackager.Create(baseName, executable, archLabel);
-            if (sfxResult.IsFailure)
-            {
-                yield return Result.Failure<INamedByteSource>(sfxResult.Error);
-            }
-            else
-            {
-                yield return Result.Success(sfxResult.Value);
-            }
-
-            var msixResult = await msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
-            if (msixResult.IsFailure)
-            {
-                yield return Result.Failure<INamedByteSource>(msixResult.Error);
-            }
-            else
-            {
-                yield return Result.Success(msixResult.Value);
-            }
-
-            var setupResource = await setupPackager.Create(runtimeIdentifier, archSuffix, deploymentOptions, baseName, icon, archLabel);
-            if (setupResource.HasValue)
-            {
-                yield return Result.Success(setupResource.Value);
-            }
+            return Result.Failure<IObservable<Result<INamedByteSource>>>(publishResult.Error);
         }
-        finally
+
+        var directory = publishResult.Value;
+        disposables.Add(directory);
+
+        var executableResult = FindExecutable(directory);
+        if (executableResult.IsFailure)
         {
-            icon.Execute(candidate => candidate.Cleanup());
+            return Result.Failure<IObservable<Result<INamedByteSource>>>(executableResult.Error);
         }
+
+        var executable = executableResult.Value;
+        var artifacts = new List<Result<INamedByteSource>>();
+
+        var sfxResult = await sfxPackager.Create(baseName, executable, archLabel);
+        artifacts.Add(sfxResult);
+
+        var msixResult = await msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
+        artifacts.Add(msixResult);
+
+        var setupResource = await setupPackager.Create(runtimeIdentifier, archSuffix, deploymentOptions, baseName, icon, archLabel);
+        if (setupResource.HasValue)
+        {
+            artifacts.Add(Result.Success(setupResource.Value));
+        }
+        
+        return Result.Success(artifacts.ToObservable());
     }
 
     private ProjectPublishRequest CreateRequest(Architecture architecture, DeploymentOptions deploymentOptions, Maybe<WindowsIcon> icon)

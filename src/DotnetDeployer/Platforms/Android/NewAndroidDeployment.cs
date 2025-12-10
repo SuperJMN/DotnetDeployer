@@ -10,10 +10,21 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
 {
     private const string AndroidRuntimeIdentifier = "android-arm64";
 
-    public async Task<Result<IAndroidDeploymentSession>> Build()
+    public async Task<Result<IDeploymentSession>> Build()
     {
         var result = await Publish();
-        return result.Map(container => (IAndroidDeploymentSession)new AndroidDeploymentSession(container, logger));
+        return result.Map(container =>
+        {
+            var resources = container.Resources.ToList();
+            logger.Execute(l => l.Debug("Found {Count} resources in container: {Resources}", resources.Count, string.Join(", ", resources.Select(x => x.Name))));
+        
+            var packages = resources
+                .ToObservable()
+                .Where(x => x.Name.EndsWith("-Signed.apk"))
+                .Select(Result.Success);
+            
+            return (IDeploymentSession)new DeploymentSession(packages, container);
+        });
     }
 
     private Task<Result<IDisposableContainer>> Publish()

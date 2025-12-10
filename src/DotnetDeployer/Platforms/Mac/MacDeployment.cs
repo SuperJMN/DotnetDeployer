@@ -2,6 +2,8 @@ using DotnetDeployer.Core;
 using DotnetPackaging.Dmg;
 using DotnetPackaging.Publish;
 using DpArch = DotnetPackaging.Architecture;
+using System.Reactive.Disposables;
+using System.Reactive.Linq;
 
 namespace DotnetDeployer.Platforms.Mac;
 
@@ -13,21 +15,30 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         [DpArch.Arm64] = ("osx-arm64", "arm64")
     };
 
-    public async IAsyncEnumerable<Result<INamedByteSource>> Create()
+    public async Task<Result<IDeploymentSession>> Build()
     {
+        var disposables = new CompositeDisposable();
+
         // Build for both supported macOS architectures regardless of host
         IEnumerable<DpArch> targetArchitectures = new[] { DpArch.Arm64, DpArch.X64 };
 
+        var builds = new List<IObservable<Result<INamedByteSource>>>();
+
         foreach (var architecture in targetArchitectures)
         {
-            await foreach (var artifact in CreateForArchitecture(architecture))
+            var build = await BuildForArchitecture(architecture, disposables);
+            if (build.IsFailure)
             {
-                yield return artifact;
+                disposables.Dispose();
+                return Result.Failure<IDeploymentSession>(build.Error);
             }
+            builds.Add(build.Value);
         }
+        
+        return new DeploymentSession(Observable.Merge(builds), disposables);
     }
 
-    private async IAsyncEnumerable<Result<INamedByteSource>> CreateForArchitecture(DpArch architecture)
+    private async Task<Result<IObservable<Result<INamedByteSource>>>> BuildForArchitecture(DpArch architecture, CompositeDisposable disposables)
     {
         logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
 
@@ -47,19 +58,18 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         var publishResult = await dotnet.Publish(request);
         if (publishResult.IsFailure)
         {
-            yield return Result.Failure<INamedByteSource>(publishResult.Error);
-            yield break;
+            return Result.Failure<IObservable<Result<INamedByteSource>>>(publishResult.Error);
         }
 
-        using var container = publishResult.Value;
+        var container = publishResult.Value;
+        disposables.Add(container);
 
         // Materialize publish output to temp directory
         var publishCopyDir = System.IO.Path.Combine(Directories.GetTempPath(), $"dp-macpub-{Guid.NewGuid():N}");
         var writeResult = await container.WriteTo(publishCopyDir);
         if (writeResult.IsFailure)
         {
-            yield return Result.Failure<INamedByteSource>(writeResult.Error);
-            yield break;
+            return Result.Failure<IObservable<Result<INamedByteSource>>>(writeResult.Error);
         }
 
         // Create DMG into temp file and return as resource
@@ -100,7 +110,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
             }
         }
 
-        yield return result;
+        return Result.Success(Observable.Return(result));
     }
 
     private static string Sanitize(string name)
