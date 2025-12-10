@@ -1,0 +1,60 @@
+using DotnetDeployer.Core;
+using DotnetDeployer.Platforms.Android;
+using DotnetPackaging.Publish;
+using Xunit.Abstractions;
+using Zafiro.Commands;
+using Zafiro.CSharpFunctionalExtensions;
+using System.Reactive.Linq;
+
+namespace DotnetDeployer.Tests.Platforms.Android;
+
+public class NewAndroidDeploymentTests(ITestOutputHelper outputHelper)
+{
+    [Fact]
+    public async Task Should_generate_apk()
+    {
+        var logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.TestOutput(outputHelper).CreateLogger();
+        
+        var tempDir = Directory.CreateTempSubdirectory("android-test");
+        
+        var command = new Command(logger);
+        var dotnet = new Dotnet(command, logger);
+        
+        // Create project
+        await command.Execute("dotnet", "new android -n TestApp", tempDir.FullName);
+
+        // Downgrade to net9.0-android (API 35) because that is what is installed. net10.0-android defaults to API 36 which is missing.
+        var csprojPath = System.IO.Path.Combine(tempDir.FullName, "TestApp", "TestApp.csproj");
+        var csprojContent = await File.ReadAllTextAsync(csprojPath);
+        csprojContent = csprojContent.Replace("net10.0-android", "net9.0-android");
+        await File.WriteAllTextAsync(csprojPath, csprojContent);
+
+        var androidSdkPath = @"C:\Program Files (x86)\Android\android-sdk";
+        
+        var options = new AndroidDeployment.DeploymentOptions
+        {
+            PackageName = "TestApp",
+            ApplicationId = "com.test.app",
+            ApplicationDisplayVersion = "1.0",
+            ApplicationVersion = 1,
+            SigningKeyAlias = "android",
+            SigningKeyPass = "test1234",
+            SigningStorePass = "test1234",
+            AndroidSigningKeyStore = ByteSource.FromBytes(await File.ReadAllBytesAsync("Integration/test.keystore")),
+        };
+
+        var projectPathString = System.IO.Path.Combine(tempDir.FullName, "TestApp", "TestApp.csproj");
+        var projectPath = new Path(projectPathString);
+
+        var publisher = new DotnetPublisher(command, Maybe<ILogger>.From(logger));
+        var sut = new NewAndroidDeployment(publisher, projectPath, options, Maybe<ILogger>.From(logger));
+
+        var result = await sut.GetPacks().ToList();
+
+        result.Should().HaveCount(1);
+        result[0].Should().Succeed();
+        result[0].Value.Name.Should().EndWith(".apk");
+    }
+}

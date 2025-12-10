@@ -47,6 +47,7 @@ public class AndroidSdk(Maybe<ILogger> logger)
                 Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Android", "Sdk"),
                 Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Android", "Sdk"),
                 Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Android", "Sdk"),
+                @"C:\Program Files (x86)\Android\android-sdk",
                 @"C:\Android\Sdk"
             });
         }

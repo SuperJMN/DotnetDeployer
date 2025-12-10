@@ -1,6 +1,8 @@
 ﻿using System.Reactive.Linq;
+using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
 using DotnetPackaging.Publish;
+using Zafiro.DivineBytes;
 using Zafiro.Reactive;
 
 namespace DotnetDeployer.Platforms.Android;
@@ -14,9 +16,15 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
         return ObservableFactory.UsingAsync(Publish, EmitPackages);
     }
 
-    private static IObservable<Result<INamedByteSource>> EmitPackages(IContainer container)
+    private IObservable<Result<INamedByteSource>> EmitPackages(IContainer container)
     {
-        return Observable.Return(new Result<INamedByteSource>());
+        var resources = container.Resources.ToList();
+        logger.Execute(l => l.Debug("Found {Count} resources in container: {Resources}", resources.Count, string.Join(", ", resources.Select(x => x.Name))));
+        
+        return resources
+            .ToObservable()
+            .Where(x => x.Name.EndsWith("-Signed.apk"))
+            .Select(Result.Success);
     }
 
     private Task<Result<IDisposableContainer>> Publish()
