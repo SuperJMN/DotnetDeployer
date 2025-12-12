@@ -11,8 +11,6 @@ using DotnetPackaging.Rpm;
 using Architecture = DotnetPackaging.Architecture;
 using DebArchive = DotnetPackaging.Deb.Archives.Deb;
 using RuntimeArch = System.Runtime.InteropServices.Architecture;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 
 namespace DotnetDeployer.Platforms.Linux;
 
@@ -24,10 +22,8 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         [Architecture.Arm64] = ("linux-arm64", "arm64")
     };
 
-    public async Task<Result<IResourceSession>> Build()
+    public IEnumerable<Task<Result<IPackage>>> Build()
     {
-        var disposables = new CompositeDisposable();
-
         // Prefer building for the current machine's architecture to avoid cross-publish failures
         var current = RuntimeInformation.ProcessArchitecture;
         IEnumerable<Architecture> targetArchitectures = current switch
@@ -36,24 +32,168 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             _ => new[] { Architecture.X64 }
         };
 
-        var artifacts = new List<INamedByteSource>();
-
+        var builds = new List<Task<Result<IPackage>>>();
         foreach (var architecture in targetArchitectures)
         {
-            var build = await BuildForArchitecture(architecture, disposables);
-            if (build.IsFailure)
-            {
-                disposables.Dispose();
-                return Result.Failure<IResourceSession>(build.Error);
-            }
-            artifacts.AddRange(build.Value);
+            builds.Add(BuildAppImage(architecture));
+            builds.Add(BuildFlatpak(architecture));
+            builds.Add(BuildDeb(architecture));
+            builds.Add(BuildRpm(architecture));
         }
-        
-        var session = new DeploymentSession(artifacts.ToObservable(), disposables);
-        return Result.Success<IResourceSession>(session);
+
+        return builds;
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildForArchitecture(Architecture architecture, CompositeDisposable disposables)
+    private Task<Result<IPackage>> BuildAppImage(Architecture architecture)
+    {
+        var archLabel = architecture.ToArchLabel();
+        var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
+
+        return BuildWithPublish(architecture, async container =>
+        {
+            appImageLogger.Execute(log => log.Information("Creating AppImage"));
+            var appImageResult = await new AppImageFactory().Create(container, metadata);
+            if (appImageResult.IsFailure)
+            {
+                return appImageResult.ConvertFailure<IPackage>();
+            }
+
+            var byteSourceResult = await appImageResult.Value.ToByteSource();
+            if (byteSourceResult.IsFailure)
+            {
+                return byteSourceResult.ConvertFailure<IPackage>();
+            }
+
+            var resource = new Resource($"{BuildBaseFileName(architecture)}.appimage", byteSourceResult.Value);
+            appImageLogger.Execute(log => log.Information("Created {File}", resource.Name));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+        });
+    }
+
+    private Task<Result<IPackage>> BuildFlatpak(Architecture architecture)
+    {
+        var archLabel = architecture.ToArchLabel();
+        var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
+
+        return BuildWithPublish(architecture, async container =>
+        {
+            var options = CreateDirectoryOptions(metadata, architecture);
+            var executableResult = await BuildUtils.GetExecutable(container, options);
+            if (executableResult.IsFailure)
+            {
+                return executableResult.ConvertFailure<IPackage>();
+            }
+
+            var packageMetadataResult = await CreatePackageMetadata(container, options, architecture, executableResult.Value, metadata.PackageName);
+            if (packageMetadataResult.IsFailure)
+            {
+                return packageMetadataResult.ConvertFailure<IPackage>();
+            }
+
+            flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
+            var planResult = await new FlatpakFactory().BuildPlan(container, packageMetadataResult.Value);
+            if (planResult.IsFailure)
+            {
+                return planResult.ConvertFailure<IPackage>();
+            }
+
+            var bundleResult = FlatpakBundle.CreateOstree(planResult.Value);
+            if (bundleResult.IsFailure)
+            {
+                return bundleResult.ConvertFailure<IPackage>();
+            }
+
+            var resource = new Resource($"{BuildBaseFileName(architecture)}.flatpak", bundleResult.Value);
+            flatpakLogger.Execute(log => log.Information("Created {File}", resource.Name));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+        });
+    }
+
+    private Task<Result<IPackage>> BuildDeb(Architecture architecture)
+    {
+        var archLabel = architecture.ToArchLabel();
+        var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
+
+        return BuildWithPublish(architecture, async container =>
+        {
+            var options = CreateDirectoryOptions(metadata, architecture);
+            var executableResult = await BuildUtils.GetExecutable(container, options);
+            if (executableResult.IsFailure)
+            {
+                return executableResult.ConvertFailure<IPackage>();
+            }
+
+            debLogger.Execute(log => log.Information("Creating DEB"));
+            var debResult = await DebFile.From()
+                .Container(container, metadata.PackageName)
+                .Configure(debOptions =>
+                {
+                    ApplyMetadata(debOptions, metadata, architecture);
+                    debOptions.WithExecutableName(executableResult.Value.Name);
+                })
+                .Build();
+
+            if (debResult.IsFailure)
+            {
+                return debResult.ConvertFailure<IPackage>();
+            }
+
+            var byteSource = DebArchive.DebMixin.ToByteSource(debResult.Value);
+            var resource = new Resource($"{BuildBaseFileName(architecture)}.deb", byteSource);
+            debLogger.Execute(log => log.Information("Created {File}", resource.Name));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+        });
+    }
+
+    private Task<Result<IPackage>> BuildRpm(Architecture architecture)
+    {
+        var archLabel = architecture.ToArchLabel();
+        var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
+
+        return BuildWithPublish(architecture, async container =>
+        {
+            rpmLogger.Execute(log => log.Information("Creating RPM"));
+            var rpmResult = await RpmFile.From()
+                .Container(container)
+                .Configure(options => ApplyMetadata(options, metadata, architecture))
+                .Build();
+
+            if (rpmResult.IsFailure)
+            {
+                return rpmResult.ConvertFailure<IPackage>();
+            }
+
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(rpmResult.Value.FullName);
+                var resource = new Resource($"{BuildBaseFileName(architecture)}.rpm", ByteSource.FromBytes(bytes));
+                rpmLogger.Execute(log => log.Information("Created {File}", resource.Name));
+                return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+            }
+            catch (Exception ex)
+            {
+                return Result.Failure<IPackage>($"Failed to read RPM artifact '{rpmResult.Value.FullName}': {ex.Message}");
+            }
+            finally
+            {
+                try
+                {
+                    if (rpmResult.IsSuccess && rpmResult.Value.Exists)
+                    {
+                        rpmLogger.Execute(log => log.Debug("Deleting temporary RPM {File}", rpmResult.Value.FullName));
+                        rpmResult.Value.Delete();
+                        rpmLogger.Execute(log => log.Debug("Deleted temporary RPM {File}", rpmResult.Value.FullName));
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    rpmLogger.Execute(log => log.Warning("Failed to delete temporary RPM {File}: {Error}", rpmResult.Value?.FullName, cleanupEx.Message));
+                }
+            }
+        });
+    }
+
+    private Task<Result<IPackage>> BuildWithPublish(Architecture architecture, Func<IDisposableContainer, Task<Result<IPackage>>> build)
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
@@ -67,188 +207,21 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             MsBuildProperties = new Dictionary<string, string>()
         };
 
-        var containerResult = await dotnet.Publish(request);
-        if (containerResult.IsFailure)
+        return dotnet.Publish(request).Bind(async container =>
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(containerResult.Error);
-        }
-
-        var container = containerResult.Value;
-        disposables.Add(container);
-        
-        return await BuildArtifacts(container, architecture);
+            var result = await build(container);
+            if (result.IsFailure)
+            {
+                container.Dispose();
+            }
+            return result;
+        });
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
+    private string BuildBaseFileName(Architecture architecture)
     {
         var version = metadata.Version.GetValueOrDefault("1.0.0");
-        var baseFileName = $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
-        var archLabel = architecture.ToArchLabel();
-
-        var options = CreateDirectoryOptions(metadata, architecture);
-        var executableResult = await BuildUtils.GetExecutable(container, options);
-        if (executableResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(executableResult.Error);
-        }
-
-        var executable = executableResult.Value;
-        var packageMetadataResult = await CreatePackageMetadata(container, options, architecture, executable, metadata.PackageName);
-        if (packageMetadataResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(packageMetadataResult.Error);
-        }
-
-        var packageMetadata = packageMetadataResult.Value;
-        var artifacts = new List<INamedByteSource>();
-
-        var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
-        appImageLogger.Execute(log => log.Information("Creating AppImage"));
-        var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
-        if (appImageResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
-        }
-        else
-        {
-            appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
-            artifacts.Add(appImageResult.Value);
-        }
-
-        var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
-        flatpakLogger.Execute(log => log.Information("Creating Flatpak"));
-        var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
-        if (flatpakResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
-        }
-        else
-        {
-            flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
-            artifacts.Add(flatpakResult.Value);
-        }
-
-        var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
-        debLogger.Execute(log => log.Information("Creating DEB"));
-        var debResult = await CreateDeb(container, architecture, $"{baseFileName}.deb", executable);
-        if (debResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
-        }
-        else
-        {
-            debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
-            artifacts.Add(debResult.Value);
-        }
-
-        var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
-        rpmLogger.Execute(log => log.Information("Creating RPM"));
-        var rpmResult = await CreateRpm(container, architecture, $"{baseFileName}.rpm", rpmLogger);
-        if (rpmResult.IsFailure)
-        {
-            rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
-            return Result.Failure<IEnumerable<INamedByteSource>>(rpmResult.Error);
-        }
-        else
-        {
-            rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
-            artifacts.Add(rpmResult.Value);
-        }
-        
-        return Result.Success<IEnumerable<INamedByteSource>>(artifacts);
-    }
-
-    private async Task<Result<INamedByteSource>> CreateAppImage(IContainer container, Architecture architecture, string fileName)
-    {
-        var appImageResult = await new AppImageFactory().Create(container, metadata);
-        if (appImageResult.IsFailure)
-        {
-            return appImageResult.ConvertFailure<INamedByteSource>();
-        }
-
-        var byteSourceResult = await appImageResult.Value.ToByteSource();
-        if (byteSourceResult.IsFailure)
-        {
-            return byteSourceResult.ConvertFailure<INamedByteSource>();
-        }
-
-        return Result.Success<INamedByteSource>(new Resource(fileName, byteSourceResult.Value));
-    }
-
-    private async Task<Result<INamedByteSource>> CreateFlatpak(IContainer container, PackageMetadata packageMetadata, string fileName)
-    {
-        var planResult = await new FlatpakFactory().BuildPlan(container, packageMetadata);
-        if (planResult.IsFailure)
-        {
-            return planResult.ConvertFailure<INamedByteSource>();
-        }
-
-        var bundleResult = FlatpakBundle.CreateOstree(planResult.Value);
-        if (bundleResult.IsFailure)
-        {
-            return bundleResult.ConvertFailure<INamedByteSource>();
-        }
-
-        return Result.Success<INamedByteSource>(new Resource(fileName, bundleResult.Value));
-    }
-
-    private async Task<Result<INamedByteSource>> CreateDeb(IContainer container, Architecture architecture, string fileName, INamedByteSourceWithPath executable)
-    {
-        var debResult = await DebFile.From()
-            .Container(container, metadata.PackageName)
-            .Configure(options =>
-            {
-                ApplyMetadata(options, metadata, architecture);
-                options.WithExecutableName(executable.Name);
-            })
-            .Build();
-
-        if (debResult.IsFailure)
-        {
-            return debResult.ConvertFailure<INamedByteSource>();
-        }
-
-        var byteSource = DebArchive.DebMixin.ToByteSource(debResult.Value);
-        return Result.Success<INamedByteSource>(new Resource(fileName, byteSource));
-    }
-
-    private async Task<Result<INamedByteSource>> CreateRpm(IContainer container, Architecture architecture, string fileName, Maybe<ILogger> rpmLogger)
-    {
-        var rpmResult = await RpmFile.From()
-            .Container(container)
-            .Configure(options => ApplyMetadata(options, metadata, architecture))
-            .Build();
-
-        if (rpmResult.IsFailure)
-        {
-            return rpmResult.ConvertFailure<INamedByteSource>();
-        }
-
-        try
-        {
-            var bytes = await File.ReadAllBytesAsync(rpmResult.Value.FullName);
-            return Result.Success<INamedByteSource>(new Resource(fileName, ByteSource.FromBytes(bytes)));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure<INamedByteSource>($"Failed to read RPM artifact '{rpmResult.Value.FullName}': {ex.Message}");
-        }
-        finally
-        {
-            try
-            {
-                if (rpmResult.IsSuccess && rpmResult.Value.Exists)
-                {
-                    rpmLogger.Execute(log => log.Debug("Deleting temporary RPM {File}", rpmResult.Value.FullName));
-                    rpmResult.Value.Delete();
-                    rpmLogger.Execute(log => log.Debug("Deleted temporary RPM {File}", rpmResult.Value.FullName));
-                }
-            }
-            catch (Exception ex)
-            {
-                rpmLogger.Execute(log => log.Warning("Failed to delete temporary RPM {File}: {Error}", rpmResult.Value?.FullName, ex.Message));
-            }
-        }
+        return $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
     }
 
     private static async Task<Result<PackageMetadata>> CreatePackageMetadata(

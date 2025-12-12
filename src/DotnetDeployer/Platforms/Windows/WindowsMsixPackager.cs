@@ -9,7 +9,7 @@ namespace DotnetDeployer.Platforms.Windows;
 
 public class WindowsMsixPackager(Maybe<ILogger> logger)
 {
-    public async Task<Result<INamedByteSource>> Create(
+    public async Task<Result<IPackage>> Create(
         IContainer container,
         INamedByteSource executable,
         Architecture architecture,
@@ -25,13 +25,15 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
         var msixResult = Msix.FromDirectoryAndMetadata(container, manifest, logger);
         if (msixResult.IsFailure)
         {
-            return msixResult.ConvertFailure<INamedByteSource>();
+            return msixResult.ConvertFailure<IPackage>();
         }
 
         var resource = new Resource($"{baseName}.msix", msixResult.Value);
+        var disposables = container is IDisposable disposable ? new[] { disposable } : Array.Empty<IDisposable>();
+        var package = (IPackage)new Package(resource.Name, resource, disposables);
         msixLogger.Execute(log => log.Information("Created {File}", resource.Name));
 
-        return Result.Success<INamedByteSource>(resource);
+        return Result.Success<IPackage>(package);
     }
 
     private static AppManifestMetadata BuildMsixManifest(WindowsDeployment.DeploymentOptions options, string executableName)

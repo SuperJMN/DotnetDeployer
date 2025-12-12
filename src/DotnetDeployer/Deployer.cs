@@ -5,6 +5,7 @@ using DotnetDeployer.Services.GitHub;
 using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.Misc;
 using Zafiro.Mixins;
+using DotnetPackaging;
 
 namespace DotnetDeployer;
 
@@ -186,12 +187,12 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // Expose packaging-only flow (no publishing)
-    public Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(ReleaseConfiguration releaseConfig)
+    public Task<Result<IEnumerable<IPackage>>> BuildArtifacts(ReleaseConfiguration releaseConfig)
     {
         return packagingStrategy.PackageForPlatforms(releaseConfig);
     }
 
-    public IAsyncEnumerable<Result<INamedByteSource>> BuildArtifactsStream(ReleaseConfiguration releaseConfig)
+    public IAsyncEnumerable<Result<IPackage>> BuildArtifactsStream(ReleaseConfiguration releaseConfig)
     {
         return packagingStrategy.PackageStream(releaseConfig);
     }

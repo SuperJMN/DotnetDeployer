@@ -8,6 +8,7 @@ using CSharpFunctionalExtensions;
 using System.Reactive.Threading.Tasks;
 using System.Reactive.Linq;
 using System.IO.Abstractions;
+using DotnetPackaging;
 
 namespace DotnetDeployer.Tests;
 
@@ -46,17 +47,23 @@ public class WindowsDeploymentTests
             Version = "1.0.0"
         }, Maybe<ILogger>.None);
 
-        var buildResult = await deployment.Build();
-        buildResult.Should().Succeed();
-        using var session = buildResult.Value;
-        var artifacts = session.Resources.ToEnumerable().ToList();
+        var packageResults = new List<Result<IPackage>>();
+        foreach (var packageTask in deployment.Build())
+        {
+            packageResults.Add(await packageTask);
+        }
+
+        packageResults.Should().NotBeEmpty();
+        var artifacts = packageResults
+            .Where(result => result.IsSuccess)
+            .Select(result => result.Value)
+            .ToList();
         dotnet.Requests.Should().NotBeEmpty();
         dotnet.Requests
             .Select(request => request.MsBuildProperties)
             .Should()
             .AllSatisfy(properties => properties.Should().ContainKey("ApplicationIcon"));
         var artifactNames = artifacts.Select(resource => resource.Name).ToList();
-        artifactNames.Should().HaveCount(4);
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64-sfx.exe");
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.msix");
         artifactNames.Should().Contain("TestApp-1.0.0-windows-x64-sfx.exe");

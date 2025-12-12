@@ -1,10 +1,10 @@
 using DotnetDeployer.Core;
+using System.IO;
+using System.Linq;
 using DotnetPackaging;
 using DotnetPackaging.Dmg;
 using DotnetPackaging.Publish;
 using DpArch = DotnetPackaging.Architecture;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 
 namespace DotnetDeployer.Platforms.Mac;
 
@@ -16,31 +16,14 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         [DpArch.Arm64] = ("osx-arm64", "arm64")
     };
 
-    public async Task<Result<IResourceSession>> Build()
+    public IEnumerable<Task<Result<IPackage>>> Build()
     {
-        var disposables = new CompositeDisposable();
-
         // Build for both supported macOS architectures regardless of host
         IEnumerable<DpArch> targetArchitectures = new[] { DpArch.Arm64, DpArch.X64 };
-
-        var artifacts = new List<INamedByteSource>();
-
-        foreach (var architecture in targetArchitectures)
-        {
-            var build = await BuildForArchitecture(architecture, disposables);
-            if (build.IsFailure)
-            {
-                disposables.Dispose();
-                return Result.Failure<IResourceSession>(build.Error);
-            }
-            artifacts.AddRange(build.Value);
-        }
-        
-        var session = new DeploymentSession(artifacts.ToObservable(), disposables);
-        return Result.Success<IResourceSession>(session);
+        return targetArchitectures.Select(BuildForArchitecture);
     }
 
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildForArchitecture(DpArch architecture, CompositeDisposable disposables)
+    private async Task<Result<IPackage>> BuildForArchitecture(DpArch architecture)
     {
         logger.Execute(log => log.Debug("Publishing macOS packages for {Architecture}", architecture));
 
@@ -60,23 +43,23 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
         var publishResult = await dotnet.Publish(request);
         if (publishResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(publishResult.Error);
+            return Result.Failure<IPackage>(publishResult.Error);
         }
 
         var container = publishResult.Value;
-        disposables.Add(container);
 
         // Materialize publish output to temp directory
         var publishCopyDir = System.IO.Path.Combine(Directories.GetTempPath(), $"dp-macpub-{Guid.NewGuid():N}");
         var writeResult = await container.WriteTo(publishCopyDir);
         if (writeResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(writeResult.Error);
+            container.Dispose();
+            return Result.Failure<IPackage>(writeResult.Error);
         }
 
-        // Create DMG into temp file and return as resource
+        // Create DMG into temp file and return as package
         var tempDmg = System.IO.Path.Combine(Directories.GetTempPath(), $"dp-macos-{Guid.NewGuid():N}.dmg");
-        Result<INamedByteSource> result;
+        Result<IPackage> result;
         try
         {
             dmgLogger.Execute(log => log.Information("Creating DMG"));
@@ -86,11 +69,11 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
             var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
             dmgLogger.Execute(log => log.Information("Created {File}", $"{baseName}.dmg"));
             var resource = (INamedByteSource)new Resource($"{baseName}.dmg", ByteSource.FromBytes(bytes));
-            result = Result.Success(resource);
+            result = Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
         }
         catch (Exception ex)
         {
-            result = Result.Failure<INamedByteSource>($"Failed to build DMG: {ex.Message}");
+            result = Result.Failure<IPackage>($"Failed to build DMG: {ex.Message}");
         }
         finally
         {
@@ -112,7 +95,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
             }
         }
 
-        return result.Map(value => (IEnumerable<INamedByteSource>)new[] { value });
+        return result;
     }
 
     private static string Sanitize(string name)

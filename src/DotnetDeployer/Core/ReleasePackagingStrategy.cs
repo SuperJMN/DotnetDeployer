@@ -1,4 +1,5 @@
 using DotnetDeployer.Platforms.Wasm;
+using DotnetPackaging;
 using System.Runtime.CompilerServices;
 
 namespace DotnetDeployer.Core;
@@ -14,21 +15,21 @@ public class ReleasePackagingStrategy
         this.logger = logger;
     }
 
-    public async Task<Result<IEnumerable<INamedByteSource>>> PackageForPlatforms(ReleaseConfiguration configuration)
+    public async Task<Result<IEnumerable<IPackage>>> PackageForPlatforms(ReleaseConfiguration configuration)
     {
-        var allFiles = new List<INamedByteSource>();
+        var allFiles = new List<IPackage>();
         await foreach (var result in PackageStream(configuration))
         {
             if (result.IsFailure)
             {
-                return Result.Failure<IEnumerable<INamedByteSource>>(result.Error);
+                return Result.Failure<IEnumerable<IPackage>>(result.Error);
             }
             allFiles.Add(result.Value);
         }
-        return Result.Success<IEnumerable<INamedByteSource>>(allFiles);
+        return Result.Success<IEnumerable<IPackage>>(allFiles);
     }
 
-    public async IAsyncEnumerable<Result<INamedByteSource>> PackageStream(ReleaseConfiguration configuration, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<Result<IPackage>> PackageStream(ReleaseConfiguration configuration, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
 
@@ -38,7 +39,7 @@ public class ReleasePackagingStrategy
             var windowsConfig = configuration.WindowsConfig;
             if (windowsConfig == null)
             {
-                yield return Result.Failure<INamedByteSource>("Windows deployment options are required for Windows packaging");
+                yield return Result.Failure<IPackage>("Windows deployment options are required for Windows packaging");
                 yield break;
             }
 
@@ -56,7 +57,7 @@ public class ReleasePackagingStrategy
             var linuxConfig = configuration.LinuxConfig;
             if (linuxConfig == null)
             {
-                yield return Result.Failure<INamedByteSource>("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
+                yield return Result.Failure<IPackage>("Linux metadata is required for Linux packaging. Provide AppImageMetadata with AppId, AppName, and PackageName");
                 yield break;
             }
 
@@ -74,7 +75,7 @@ public class ReleasePackagingStrategy
             var macConfig = configuration.MacOsConfig;
             if (macConfig == null)
             {
-                yield return Result.Failure<INamedByteSource>("macOS configuration is required for macOS packaging");
+                yield return Result.Failure<IPackage>("macOS configuration is required for macOS packaging");
                 yield break;
             }
 
@@ -92,7 +93,7 @@ public class ReleasePackagingStrategy
             var androidConfig = configuration.AndroidConfig;
             if (androidConfig == null)
             {
-                yield return Result.Failure<INamedByteSource>("Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
+                yield return Result.Failure<IPackage>("Android deployment options are required for Android packaging. Includes signing keys, version codes, etc.");
                 yield break;
             }
 
@@ -110,7 +111,7 @@ public class ReleasePackagingStrategy
             var wasmConfig = configuration.WebAssemblyConfig;
             if (wasmConfig == null)
             {
-                yield return Result.Failure<INamedByteSource>("WebAssembly configuration is required for WebAssembly packaging");
+                yield return Result.Failure<IPackage>("WebAssembly configuration is required for WebAssembly packaging");
                 yield break;
             }
 
@@ -118,7 +119,7 @@ public class ReleasePackagingStrategy
             var wasmResult = await packager.CreateWasmSite(wasmConfig.ProjectPath);
             if (wasmResult.IsFailure)
             {
-                yield return Result.Failure<INamedByteSource>(wasmResult.Error);
+                yield return Result.Failure<IPackage>(wasmResult.Error);
                 yield break;
             }
 

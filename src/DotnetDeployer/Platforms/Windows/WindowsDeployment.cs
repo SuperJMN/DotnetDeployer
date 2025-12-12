@@ -2,8 +2,6 @@ using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
 using Zafiro.CSharpFunctionalExtensions;
-using System.Reactive.Disposables;
-using System.Reactive.Linq;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -15,94 +13,65 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         [Architecture.Arm64] = ("win-arm64", "arm64")
     };
 
+    private static readonly Architecture[] SupportedArchitectures = [Architecture.Arm64, Architecture.X64];
+
     private readonly WindowsIconResolver iconResolver = new(logger);
     private readonly WindowsMsixPackager msixPackager = new(logger);
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
     private readonly WindowsSfxPackager sfxPackager = new(dotnet, logger);
 
-    public async Task<Result<IResourceSession>> Build()
+    public IEnumerable<Task<Result<IPackage>>> Build()
     {
-        var disposables = new CompositeDisposable();
-        IEnumerable<Architecture> supportedArchitectures = [Architecture.Arm64, Architecture.X64];
-        var artifacts = new List<INamedByteSource>();
-
-        foreach (var architecture in supportedArchitectures)
-        {
-            var buildResult = await BuildFor(architecture, options, disposables);
-            if (buildResult.IsFailure)
-            {
-                disposables.Dispose();
-                return Result.Failure<IResourceSession>(buildResult.Error);
-            }
-            
-            artifacts.AddRange(buildResult.Value);
-        }
-        
-        var resources = artifacts.ToObservable();
-        var session = new DeploymentSession(resources, disposables);
-        return Result.Success<IResourceSession>(session);
-    }
-
-    private async Task<Result<IEnumerable<INamedByteSource>>> BuildFor(Architecture architecture, DeploymentOptions deploymentOptions, CompositeDisposable disposables)
-    {
-        var archLabel = architecture.ToArchLabel();
-        var publishLogger = logger.ForPackaging("Windows", "Publish", archLabel);
-        publishLogger.Execute(log => log.Debug("Publishing packages for Windows {Architecture}", architecture));
-
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
         {
-            return Result.Failure<IEnumerable<INamedByteSource>>(iconResult.Error);
+            return [Task.FromResult(Result.Failure<IPackage>(iconResult.Error))];
         }
 
         var icon = iconResult.Value;
-        icon.Execute(i => disposables.Add(Disposable.Create(() => i.Cleanup())));
         
-        var request = CreateRequest(architecture, deploymentOptions, icon);
-        icon.Tap(value => publishLogger.Execute(log => log.Debug("Using icon '{IconPath}' for Windows packaging", value.Path)));
-        var baseName = $"{deploymentOptions.PackageName}-{deploymentOptions.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
+        return SupportedArchitectures
+            .SelectMany<Architecture, Task<Result<IPackage>>>(architecture =>
+                [
+                    BuildSfxFor(architecture, icon),
+                    BuildMsixFor(architecture, icon),
+                    BuildSetupFor(architecture, icon)
+                ]
+            );
+    }
+
+    private Task<Result<IPackage>> BuildSfxFor(Architecture architecture, Maybe<WindowsIcon> icon)
+    {
+        var request = CreateRequest(architecture, options, icon);
+        var baseName = $"{options.PackageName}-{options.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
+        var archLabel = architecture.ToArchLabel();
+
+        return from publish in dotnet.Publish(request)
+            from executable in FindExecutable(publish)
+            from sfx in sfxPackager.Create(baseName, executable, archLabel, publish)
+            select sfx;
+    }
+
+    private Task<Result<IPackage>> BuildMsixFor(Architecture architecture, Maybe<WindowsIcon> icon)
+    {
+        var request = CreateRequest(architecture, options, icon);
+        var baseName = $"{options.PackageName}-{options.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
+        var archLabel = architecture.ToArchLabel();
+
+        return from publish in dotnet.Publish(request)
+            from executable in FindExecutable(publish)
+            from msix in msixPackager.Create(publish, executable, architecture, options, baseName, archLabel)
+            select msix;
+    }
+
+    private Task<Result<IPackage>> BuildSetupFor(Architecture architecture, Maybe<WindowsIcon> icon)
+    {
+        var baseName = $"{options.PackageName}-{options.Version}-windows-{WindowsArchitecture[architecture].Suffix}";
+        var archLabel = architecture.ToArchLabel();
         var runtimeIdentifier = WindowsArchitecture[architecture].Runtime;
         var archSuffix = WindowsArchitecture[architecture].Suffix;
 
-        var publishResult = await dotnet.Publish(request);
-        if (publishResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(publishResult.Error);
-        }
-
-        var directory = publishResult.Value;
-        disposables.Add(directory);
-
-        var executableResult = FindExecutable(directory);
-        if (executableResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(executableResult.Error);
-        }
-
-        var executable = executableResult.Value;
-        var artifacts = new List<INamedByteSource>();
-
-        var sfxResult = await sfxPackager.Create(baseName, executable, archLabel);
-        if (sfxResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(sfxResult.Error);
-        }
-        artifacts.Add(sfxResult.Value);
-
-        var msixResult = await msixPackager.Create(directory, executable, architecture, deploymentOptions, baseName, archLabel);
-        if (msixResult.IsFailure)
-        {
-            return Result.Failure<IEnumerable<INamedByteSource>>(msixResult.Error);
-        }
-        artifacts.Add(msixResult.Value);
-
-        var setupResource = await setupPackager.Create(runtimeIdentifier, archSuffix, deploymentOptions, baseName, icon, archLabel, disposables);
-        if (setupResource.HasValue)
-        {
-            artifacts.Add(setupResource.Value);
-        }
-        
-        return Result.Success<IEnumerable<INamedByteSource>>(artifacts);
+        return setupPackager.Create(runtimeIdentifier, archSuffix, options, baseName, icon, archLabel);
     }
 
     private ProjectPublishRequest CreateRequest(Architecture architecture, DeploymentOptions deploymentOptions, Maybe<WindowsIcon> icon)

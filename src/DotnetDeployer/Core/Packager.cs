@@ -7,51 +7,72 @@ using DotnetPackaging;
 using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Publish;
 using System.Reactive.Linq;
+using System.Linq;
 
 namespace DotnetDeployer.Core;
 
 public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
 {
-    public IAsyncEnumerable<Result<INamedByteSource>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
+    public IAsyncEnumerable<Result<IPackage>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
     {
         var platformLogger = logger.ForPlatform("Windows");
         return CreatePlatformPackages(() => new WindowsDeployment(dotnet, path, deploymentOptions, platformLogger).Build());
     }
 
-    public IAsyncEnumerable<Result<INamedByteSource>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
+    public IAsyncEnumerable<Result<IPackage>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
     {
         var platformLogger = logger.ForPlatform("Android");
-        var workloadGuard = new AndroidWorkloadGuard(new Command(platformLogger), platformLogger);
-        return new AndroidDeployment(dotnet, path, options, platformLogger, workloadGuard).Create();
+        var publisher = new DotnetPackaging.Publish.DotnetPublisher(platformLogger);
+        return CreatePlatformPackages(() => new NewAndroidDeployment(publisher, path, options, platformLogger).Build());
     }
-    
 
-    
-    public IAsyncEnumerable<Result<INamedByteSource>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
+
+
+    public IAsyncEnumerable<Result<IPackage>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
     {
         var platformLogger = logger.ForPlatform("Linux");
         return CreatePlatformPackages(() => new LinuxDeployment(dotnet, path, metadata, platformLogger).Build());
     }
 
-    public IAsyncEnumerable<Result<INamedByteSource>> CreateMacPackages(Path path, string appName, string version)
+    public IAsyncEnumerable<Result<IPackage>> CreateMacPackages(Path path, string appName, string version)
     {
         var platformLogger = logger.ForPlatform("macOS");
         return CreatePlatformPackages(() => new MacDeployment(dotnet, path, appName, version, platformLogger).Build());
     }
 
-    private async IAsyncEnumerable<Result<INamedByteSource>> CreatePlatformPackages(Func<Task<Result<IResourceSession>>> buildFactory)
+    private async IAsyncEnumerable<Result<IPackage>> CreatePlatformPackages(Func<IEnumerable<Task<Result<IPackage>>>> buildFactory)
     {
-        var buildResult = await buildFactory();
-        if (buildResult.IsFailure)
+        IEnumerable<Task<Result<IPackage>>> builds;
+        string? creationError = null;
+        try
         {
-            yield return Result.Failure<INamedByteSource>(buildResult.Error);
+            builds = buildFactory();
+        }
+        catch (Exception ex)
+        {
+            creationError = $"Failed to create build tasks: {ex.Message}";
+            builds = Enumerable.Empty<Task<Result<IPackage>>>();
+        }
+
+        if (creationError is not null)
+        {
+            yield return Result.Failure<IPackage>(creationError);
             yield break;
         }
 
-        using var session = buildResult.Value;
-        foreach (var item in session.Resources.ToEnumerable())
+        foreach (var packageTask in builds)
         {
-            yield return Result.Success(item);
+            Result<IPackage> packageResult;
+            try
+            {
+                packageResult = await packageTask;
+            }
+            catch (Exception ex)
+            {
+                packageResult = Result.Failure<IPackage>($"Packaging task failed: {ex.Message}");
+            }
+
+            yield return packageResult;
         }
     }
 

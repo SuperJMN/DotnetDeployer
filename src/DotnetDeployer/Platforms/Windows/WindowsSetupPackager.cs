@@ -3,7 +3,6 @@ using DotnetPackaging;
 using DotnetPackaging.Exe;
 using System.IO;
 using System.Linq;
-using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Zafiro.DivineBytes;
@@ -14,14 +13,13 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
 {
     private readonly IExePackagingService packagingService = packagingService ?? new ExePackagingServiceAdapter();
 
-    public async Task<Maybe<INamedByteSource>> Create(
+    public async Task<Result<IPackage>> Create(
         string runtimeIdentifier,
         string archSuffix,
         WindowsDeployment.DeploymentOptions deploymentOptions,
         string baseName,
         Maybe<WindowsIcon> icon,
-        string archLabel,
-        CompositeDisposable disposables)
+        string archLabel)
     {
         var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
         installerLogger.Execute(log => log.Information("Creating Installer"));
@@ -41,26 +39,24 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
         if (buildResult.IsFailure)
         {
             installerLogger.Execute(log => log.Debug("Windows Setup installer generation failed for {Arch}: {Error}. Continuing without setup.exe.", archSuffix, buildResult.Error));
-            return Maybe<INamedByteSource>.None;
+            return Result.Failure<IPackage>(buildResult.Error);
         }
 
         var session = buildResult.Value;
-        disposables.Add(session);
+        var packages = session.Resources.ToEnumerable().Where(result => string.Equals(result.Name, outputName, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        var package = session.Resources.ToEnumerable()
-            .Where(result => string.Equals(result.Name, outputName, StringComparison.OrdinalIgnoreCase))
-            .FirstOrDefault();
-
-        if (package is null)
+        if (packages.Count == 0)
         {
             installerLogger.Execute(log => log.Warning("Windows Setup installer built successfully but resource {Name} was not found in package list.", outputName));
-            return Maybe<INamedByteSource>.None;
+            session.Dispose();
+            return Result.Failure<IPackage>($"Windows Setup installer built successfully but resource {outputName} was not found in package list.");
         }
 
-        var detachedResource = (INamedByteSource)new Resource(outputName, package);
-        installerLogger.Execute(log => log.Information("Created Installer {File}", detachedResource.Name));
+        var resource = packages.First();
+        var package = (IPackage)new Package(outputName, resource, new[] { session });
+        installerLogger.Execute(log => log.Information("Created Installer {File}", outputName));
 
-        return Maybe<INamedByteSource>.From(detachedResource);
+        return Result.Success<IPackage>(package);
     }
 
 }

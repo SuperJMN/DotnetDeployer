@@ -1,4 +1,5 @@
-﻿using System.Reactive.Linq;
+﻿using System.Reactive.Disposables;
+using System.Reactive.Linq;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
 using DotnetPackaging;
@@ -12,11 +13,30 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
 {
     private const string AndroidRuntimeIdentifier = "android-arm64";
 
-    public Task<Result<IResourceSession>> Build()
+    public IEnumerable<Task<Result<IPackage>>> Build()
     {
-        return from publishedFiles in Publish()
-            let resources = publishedFiles.Resources.Where(source => source.Name.EndsWith("-Signed.apk"))
-            select (IResourceSession)new ResourceSession(resources.ToObservable(), publishedFiles);
+        var publishResult = Publish().GetAwaiter().GetResult();
+        if (publishResult.IsFailure)
+        {
+            return new[] { Task.FromResult(Result.Failure<IPackage>(publishResult.Error)) };
+        }
+
+        var publishedFiles = publishResult.Value;
+        var sharedContainer = new RefCountDisposable(publishedFiles);
+        var packages = publishedFiles.Resources
+            .Where(source => source.Name.EndsWith("-Signed.apk"))
+            .Select(resource => (IPackage)new Package(resource.Name, resource, new[] { sharedContainer.GetDisposable() }))
+            .Select(Result.Success<IPackage>)
+            .Select(Task.FromResult)
+            .ToList();
+
+        if (packages.Count == 0)
+        {
+            publishedFiles.Dispose();
+            return new[] { Task.FromResult(Result.Failure<IPackage>("No signed APKs were produced")) };
+        }
+
+        return packages;
     }
 
     private Task<Result<IDisposableContainer>> Publish()
@@ -72,14 +92,5 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
 
             return tempFile;
         });
-    }
-}
-
-public record ResourceSession(IObservable<INamedByteSource> Resources, IDisposable Disposable) : IResourceSession
-{
-
-    public void Dispose()
-    {
-        Disposable.Dispose();
     }
 }
