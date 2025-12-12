@@ -19,7 +19,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public static string AndroidProject = "/mnt/fast/Repos/DotnetDeployer/samples/TestApp/TestApp.Android/TestApp.Android.csproj";
     public static string WasmProject = "/mnt/fast/Repos/DotnetDeployer/samples/TestApp/TestApp.Browser/TestApp.Browser.csproj";
 
-    [Fact]
+    [Fact(Skip = "Requires sample projects and credentials")]
     public async Task Test_windows()
     {
         var dotnet = new Dotnet(new Command(Maybe<ILogger>.None), Maybe<ILogger>.None);
@@ -40,7 +40,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires Android sample project")]
     public async Task Test_android()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
@@ -77,7 +77,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         return new Packager(dotnet, logger);
     }
 
-    [Fact]
+    [Fact(Skip = "Requires sample projects")]
     public async Task Test_linux()
     {
         var writeResults = await CreatePackager()
@@ -89,7 +89,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires NuGet sample project")]
     public async Task Test_nuget_pack()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
@@ -102,7 +102,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires NuGet sample project and credentials")]
     public async Task Test_nuget_push()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
@@ -116,7 +116,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires GitHub credentials")]
     public async Task Create_GitHub_release()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
@@ -155,7 +155,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires Wasm sample project")]
     public async Task Test_wasm_site()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();
@@ -168,7 +168,7 @@ public class PackagingTests(ITestOutputHelper outputHelper)
         result.Should().Succeed();
     }
 
-    [Fact]
+    [Fact(Skip = "Requires GitHub credentials and sample solution")]
     public async Task Create_GitHub_release_from_solution_discovery()
     {
         var logger = new LoggerConfiguration().WriteTo.TestOutput(outputHelper).CreateLogger();

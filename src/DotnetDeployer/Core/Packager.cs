@@ -3,6 +3,7 @@ using DotnetDeployer.Platforms.Linux;
 using DotnetDeployer.Platforms.Mac;
 using DotnetDeployer.Platforms.Wasm;
 using DotnetDeployer.Platforms.Windows;
+using DotnetPackaging;
 using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Publish;
 using System.Reactive.Linq;
@@ -38,7 +39,7 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         return CreatePlatformPackages(() => new MacDeployment(dotnet, path, appName, version, platformLogger).Build());
     }
 
-    private async IAsyncEnumerable<Result<INamedByteSource>> CreatePlatformPackages(Func<Task<Result<IDeploymentSession>>> buildFactory)
+    private async IAsyncEnumerable<Result<INamedByteSource>> CreatePlatformPackages(Func<Task<Result<IResourceSession>>> buildFactory)
     {
         var buildResult = await buildFactory();
         if (buildResult.IsFailure)
@@ -48,9 +49,9 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         }
 
         using var session = buildResult.Value;
-        foreach (var item in session.Packages.ToEnumerable())
+        foreach (var item in session.Resources.ToEnumerable())
         {
-            yield return item;
+            yield return Result.Success(item);
         }
     }
 

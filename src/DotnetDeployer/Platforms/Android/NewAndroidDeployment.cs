@@ -1,7 +1,9 @@
 ﻿using System.Reactive.Linq;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
+using DotnetPackaging;
 using DotnetPackaging.Publish;
+using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Platforms.Android;
@@ -10,21 +12,11 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
 {
     private const string AndroidRuntimeIdentifier = "android-arm64";
 
-    public async Task<Result<IDeploymentSession>> Build()
+    public Task<Result<IResourceSession>> Build()
     {
-        var result = await Publish();
-        return result.Map(container =>
-        {
-            var resources = container.Resources.ToList();
-            logger.Execute(l => l.Debug("Found {Count} resources in container: {Resources}", resources.Count, string.Join(", ", resources.Select(x => x.Name))));
-        
-            var packages = resources
-                .ToObservable()
-                .Where(x => x.Name.EndsWith("-Signed.apk"))
-                .Select(Result.Success);
-            
-            return (IDeploymentSession)new DeploymentSession(packages, container);
-        });
+        return from publishedFiles in Publish()
+            let resources = publishedFiles.Resources.Where(source => source.Name.EndsWith("-Signed.apk"))
+            select (IResourceSession)new ResourceSession(resources.ToObservable(), publishedFiles);
     }
 
     private Task<Result<IDisposableContainer>> Publish()
@@ -33,7 +25,7 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
             from androidSkdPath in GetAndroidSdk()
             select CreateRequest(projectPath, options, keystore.FilePath, androidSkdPath);
         
-        return request.Bind(projectPublishRequest => publisher.Publish(projectPublishRequest));
+        return request.Bind(publisher.Publish);
     }
     
     private Result<string> GetAndroidSdk()
@@ -81,5 +73,13 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
             return tempFile;
         });
     }
+}
 
+public record ResourceSession(IObservable<INamedByteSource> Resources, IDisposable Disposable) : IResourceSession
+{
+
+    public void Dispose()
+    {
+        Disposable.Dispose();
+    }
 }

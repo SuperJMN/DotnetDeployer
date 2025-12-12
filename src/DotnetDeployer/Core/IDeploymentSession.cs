@@ -1,9 +1,5 @@
-using CSharpFunctionalExtensions;
-using Zafiro.DivineBytes;
+using DotnetPackaging;
 
 namespace DotnetDeployer.Core;
 
-public interface IDeploymentSession : IDisposable
-{
-    IObservable<Result<INamedByteSource>> Packages { get; }
-}
+public interface IDeploymentSession : IResourceSession;

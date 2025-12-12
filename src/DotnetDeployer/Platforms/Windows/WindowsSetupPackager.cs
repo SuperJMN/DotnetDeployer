@@ -1,7 +1,12 @@
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Exe;
+using System.IO;
+using System.Linq;
+using System.Reactive.Disposables;
+using System.Reactive.Linq;
 using System.Threading.Tasks;
+using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Platforms.Windows;
 
@@ -15,7 +20,8 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
         WindowsDeployment.DeploymentOptions deploymentOptions,
         string baseName,
         Maybe<WindowsIcon> icon,
-        string archLabel)
+        string archLabel,
+        CompositeDisposable disposables)
     {
         var installerLogger = logger.ForPackaging("Windows", "Installer", archLabel);
         installerLogger.Execute(log => log.Information("Creating Installer"));
@@ -38,41 +44,30 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
             return Maybe<INamedByteSource>.None;
         }
 
-        var resourceMaybe = ExtractSetupResource(buildResult.Value, outputName, installerLogger);
-        if (resourceMaybe.HasNoValue)
+        var session = buildResult.Value;
+        disposables.Add(session);
+
+        var package = session.Resources.ToEnumerable()
+            .Where(result => string.Equals(result.Name, outputName, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault();
+
+        if (package is null)
         {
+            installerLogger.Execute(log => log.Warning("Windows Setup installer built successfully but resource {Name} was not found in package list.", outputName));
             return Maybe<INamedByteSource>.None;
         }
-        
-        var detachedResource = (INamedByteSource)new Resource(outputName, resourceMaybe.Value);
+
+        var detachedResource = (INamedByteSource)new Resource(outputName, package);
         installerLogger.Execute(log => log.Information("Created Installer {File}", detachedResource.Name));
 
         return Maybe<INamedByteSource>.From(detachedResource);
     }
 
-    private static Maybe<INamedByteSource> ExtractSetupResource(
-        IContainer container,
-        string outputName,
-        Maybe<ILogger> installerLogger)
-    {
-        var resourceMaybe = container.ResourcesWithPathsRecursive()
-            .TryFirst(r => r.Name == outputName)
-            .Map(r => (INamedByteSource)r);
-
-        resourceMaybe.Execute(r => installerLogger.Execute(log => log.Information("Created Installer {File}", r.Name)));
-
-        if (resourceMaybe.HasNoValue)
-        {
-            installerLogger.Execute(log => log.Warning("Windows Setup installer built successfully but resource {Name} was not found in container.", outputName));
-        }
-
-        return resourceMaybe;
-    }
 }
 
 public interface IExePackagingService
 {
-    Task<Result<IContainer>> BuildFromProject(
+    Task<Result<IResourceSession>> BuildFromProject(
         FileInfo projectFile,
         string? runtimeIdentifier,
         bool selfContained,
@@ -88,7 +83,7 @@ public interface IExePackagingService
 
 internal class ExePackagingServiceAdapter : IExePackagingService
 {
-    public Task<Result<IContainer>> BuildFromProject(
+    public Task<Result<IResourceSession>> BuildFromProject(
         FileInfo projectFile,
         string? runtimeIdentifier,
         bool selfContained,

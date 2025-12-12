@@ -10,6 +10,9 @@ using FluentAssertions;
 using System.IO.Abstractions;
 // using Zafiro.DivineBytes; already there
 using Zafiro.DivineBytes.System.IO;
+using Zafiro.DivineBytes;
+using System.Reactive.Linq;
+using System.Reactive.Disposables;
 
 namespace DotnetDeployer.Tests;
 
@@ -66,12 +69,13 @@ public class WindowsPackagersDetachmentTests
         var installerResource = sandbox.CreateExecutableResource("app-1.0.0-windows-x64-setup.exe", "installer payload");
         var service = new FakePackagingService(sandbox.CreatePublishContainer());
         var packager = new WindowsSetupPackager(new Path("/tmp/project.csproj"), Maybe<ILogger>.None, service);
+        using var disposables = new CompositeDisposable();
 
         var result = await packager.Create("win-x64", "x64", new WindowsDeployment.DeploymentOptions
         {
             PackageName = "App",
             Version = "1.0.0"
-        }, "app-1.0.0-windows-x64", Maybe<WindowsIcon>.None, "x64");
+        }, "app-1.0.0-windows-x64", Maybe<WindowsIcon>.None, "x64", disposables);
 
         result.HasValue.Should().BeTrue();
         var outputPath = TemporaryPublish.NewOutputPath("app-setup.exe");
@@ -81,6 +85,26 @@ public class WindowsPackagersDetachmentTests
         writeResult.Should().Succeed();
         File.Exists(outputPath).Should().BeTrue();
         File.Delete(outputPath);
+        disposables.Dispose();
+    }
+
+    [Fact]
+    public async Task Session_disposes_publish_directory()
+    {
+        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dp-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var disposableContainer = new DotnetPackaging.Publish.DisposableDirectoryContainer(tempDir, Log.Logger);
+
+        var package = new Resource("pkg.bin", ByteSource.FromBytes(new byte[] { 1, 2, 3 }));
+        var packages = new[] { package }.ToObservable();
+
+        var session = new DeploymentSession(packages, new[] { disposableContainer });
+        var received = await session.Resources.FirstAsync();
+        received.Name.Should().Be("pkg.bin");
+        Directory.Exists(tempDir).Should().BeTrue();
+
+        session.Dispose();
+        Directory.Exists(tempDir).Should().BeFalse();
     }
 
     private sealed class FakePackagingService : IExePackagingService
@@ -92,7 +116,7 @@ public class WindowsPackagersDetachmentTests
             this.container = container;
         }
 
-        public Task<Result<IContainer>> BuildFromProject(
+        public Task<Result<IResourceSession>> BuildFromProject(
             FileInfo projectFile,
             string? runtimeIdentifier,
             bool selfContained,
@@ -105,7 +129,11 @@ public class WindowsPackagersDetachmentTests
             IByteSource? stubFile,
             IByteSource? setupLogo = null)
         {
-            return Task.FromResult(Result.Success(container));
+            var package = new Resource(outputName, ByteSource.FromString("installer payload"));
+            var session = new PackagingSession(
+                new[] { package }.ToObservable(),
+                Array.Empty<IDisposable>());
+            return Task.FromResult(Result.Success<IResourceSession>(session));
         }
     }
 

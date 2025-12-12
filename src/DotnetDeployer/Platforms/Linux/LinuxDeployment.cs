@@ -24,7 +24,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         [Architecture.Arm64] = ("linux-arm64", "arm64")
     };
 
-    public async Task<Result<IDeploymentSession>> Build()
+    public async Task<Result<IResourceSession>> Build()
     {
         var disposables = new CompositeDisposable();
 
@@ -36,7 +36,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             _ => new[] { Architecture.X64 }
         };
 
-        var builds = new List<IObservable<Result<INamedByteSource>>>();
+        var artifacts = new List<INamedByteSource>();
 
         foreach (var architecture in targetArchitectures)
         {
@@ -44,15 +44,16 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             if (build.IsFailure)
             {
                 disposables.Dispose();
-                return Result.Failure<IDeploymentSession>(build.Error);
+                return Result.Failure<IResourceSession>(build.Error);
             }
-            builds.Add(build.Value);
+            artifacts.AddRange(build.Value);
         }
         
-        return new DeploymentSession(Observable.Merge(builds), disposables);
+        var session = new DeploymentSession(artifacts.ToObservable(), disposables);
+        return Result.Success<IResourceSession>(session);
     }
 
-    private async Task<Result<IObservable<Result<INamedByteSource>>>> BuildForArchitecture(Architecture architecture, CompositeDisposable disposables)
+    private async Task<Result<IEnumerable<INamedByteSource>>> BuildForArchitecture(Architecture architecture, CompositeDisposable disposables)
     {
         var archLabel = architecture.ToArchLabel();
         var publishLogger = logger.ForPackaging("Linux", "Publish", archLabel);
@@ -69,16 +70,16 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         var containerResult = await dotnet.Publish(request);
         if (containerResult.IsFailure)
         {
-            return Result.Failure<IObservable<Result<INamedByteSource>>>(containerResult.Error);
+            return Result.Failure<IEnumerable<INamedByteSource>>(containerResult.Error);
         }
 
         var container = containerResult.Value;
         disposables.Add(container);
         
-        return Result.Success(await BuildArtifacts(container, architecture));
+        return await BuildArtifacts(container, architecture);
     }
 
-    private async Task<IObservable<Result<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
+    private async Task<Result<IEnumerable<INamedByteSource>>> BuildArtifacts(IContainer container, Architecture architecture)
     {
         var version = metadata.Version.GetValueOrDefault("1.0.0");
         var baseFileName = $"{metadata.PackageName}-{version}-linux-{LinuxArchitecture[architecture].RuntimeLinux}";
@@ -88,30 +89,30 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         var executableResult = await BuildUtils.GetExecutable(container, options);
         if (executableResult.IsFailure)
         {
-            return Observable.Return(Result.Failure<INamedByteSource>(executableResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(executableResult.Error);
         }
 
         var executable = executableResult.Value;
         var packageMetadataResult = await CreatePackageMetadata(container, options, architecture, executable, metadata.PackageName);
         if (packageMetadataResult.IsFailure)
         {
-            return Observable.Return(Result.Failure<INamedByteSource>(packageMetadataResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(packageMetadataResult.Error);
         }
 
         var packageMetadata = packageMetadataResult.Value;
-        var artifacts = new List<Result<INamedByteSource>>();
+        var artifacts = new List<INamedByteSource>();
 
         var appImageLogger = logger.ForPackaging("Linux", "AppImage", archLabel);
         appImageLogger.Execute(log => log.Information("Creating AppImage"));
         var appImageResult = await CreateAppImage(container, architecture, $"{baseFileName}.appimage");
         if (appImageResult.IsFailure)
         {
-            artifacts.Add(Result.Failure<INamedByteSource>(appImageResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(appImageResult.Error);
         }
         else
         {
             appImageLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.appimage"));
-            artifacts.Add(Result.Success(appImageResult.Value));
+            artifacts.Add(appImageResult.Value);
         }
 
         var flatpakLogger = logger.ForPackaging("Linux", "Flatpak", archLabel);
@@ -119,12 +120,12 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         var flatpakResult = await CreateFlatpak(container, packageMetadata, $"{baseFileName}.flatpak");
         if (flatpakResult.IsFailure)
         {
-            artifacts.Add(Result.Failure<INamedByteSource>(flatpakResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(flatpakResult.Error);
         }
         else
         {
             flatpakLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.flatpak"));
-            artifacts.Add(Result.Success(flatpakResult.Value));
+            artifacts.Add(flatpakResult.Value);
         }
 
         var debLogger = logger.ForPackaging("Linux", "DEB", archLabel);
@@ -132,12 +133,12 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         var debResult = await CreateDeb(container, architecture, $"{baseFileName}.deb", executable);
         if (debResult.IsFailure)
         {
-            artifacts.Add(Result.Failure<INamedByteSource>(debResult.Error));
+            return Result.Failure<IEnumerable<INamedByteSource>>(debResult.Error);
         }
         else
         {
             debLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.deb"));
-            artifacts.Add(Result.Success(debResult.Value));
+            artifacts.Add(debResult.Value);
         }
 
         var rpmLogger = logger.ForPackaging("Linux", "RPM", archLabel);
@@ -146,22 +147,15 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
         if (rpmResult.IsFailure)
         {
             rpmLogger.Execute(log => log.Error("RPM packaging failed: {Error}", rpmResult.Error));
-            // Note: Original code logged error but didn't yield failure result for RPM? 
-            // Checking original code: if (rpmResult.IsFailure) { rpmLogger... } else { yield Success }
-            // So it swallowed the failure? "RPM packaging failed" only log.
-            // I should probably preserve that behavior or yield failure?
-            // "If failure... log error". Iterate next.
-            // If I yield failure, it might be better. But sticking to valid refactoring:
-            // Original code: if (IsFailure) log Error. else yield Success.
-            // So it did NOT yield failure.
+            return Result.Failure<IEnumerable<INamedByteSource>>(rpmResult.Error);
         }
         else
         {
             rpmLogger.Execute(log => log.Information("Created {File}", $"{baseFileName}.rpm"));
-            artifacts.Add(Result.Success(rpmResult.Value));
+            artifacts.Add(rpmResult.Value);
         }
         
-        return artifacts.ToObservable();
+        return Result.Success<IEnumerable<INamedByteSource>>(artifacts);
     }
 
     private async Task<Result<INamedByteSource>> CreateAppImage(IContainer container, Architecture architecture, string fileName)

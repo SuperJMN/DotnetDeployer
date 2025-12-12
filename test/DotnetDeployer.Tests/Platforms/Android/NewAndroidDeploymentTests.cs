@@ -37,11 +37,10 @@ public class NewAndroidDeploymentTests(ITestOutputHelper outputHelper)
         buildResult.Should().Succeed();
         
         using var session = buildResult.Value;
-        var packages = await session.Packages.ToList();
+        var packages = await session.Resources.ToList();
 
         packages.Should().HaveCount(1);
-        packages[0].Should().Succeed();
-        packages[0].Value.Name.Should().EndWith(".apk");
+        packages[0].Name.Should().EndWith(".apk");
     }
 
     private static async Task CreateTestProject(Command command, string tempDir)

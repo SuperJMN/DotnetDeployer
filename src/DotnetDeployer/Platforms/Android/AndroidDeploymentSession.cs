@@ -18,17 +18,16 @@ public class AndroidDeploymentSession : IAndroidDeploymentSession
         this.logger = logger;
     }
 
-    public IObservable<Result<INamedByteSource>> Packages
+    public IObservable<INamedByteSource> Resources
     {
         get
         {
             var resources = container.Resources.ToList();
             logger.Execute(l => l.Debug("Found {Count} resources in container: {Resources}", resources.Count, string.Join(", ", resources.Select(x => x.Name))));
-        
+
             return resources
                 .ToObservable()
-                .Where(x => x.Name.EndsWith("-Signed.apk"))
-                .Select(Result.Success);
+                .Where(x => x.Name.EndsWith("-Signed.apk"));
         }
     }
 

@@ -1,3 +1,5 @@
+using DotnetPackaging.Publish;
+using DotnetPackaging;
 using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Platforms.Wasm;

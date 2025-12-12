@@ -30,7 +30,7 @@ public class WindowsDeploymentTests
 
         var files = new Dictionary<string, IByteSource>
         {
-            ["TestApp.exe"] = ByteSource.FromStream(System.IO.File.OpenRead(System.IO.Path.Combine(tempDir, "TestApp.exe")))
+            ["TestApp.exe"] = ByteSource.FromStreamFactory(() => System.IO.File.OpenRead(System.IO.Path.Combine(tempDir, "TestApp.exe")))
         };
 
         var container = files.ToRootContainer().Value;
@@ -49,16 +49,13 @@ public class WindowsDeploymentTests
         var buildResult = await deployment.Build();
         buildResult.Should().Succeed();
         using var session = buildResult.Value;
-        var list = await session.Packages.ToList();
-        var result = list.Combine();
-
-        result.Should().Succeed();
+        var artifacts = session.Resources.ToEnumerable().ToList();
         dotnet.Requests.Should().NotBeEmpty();
         dotnet.Requests
             .Select(request => request.MsBuildProperties)
             .Should()
             .AllSatisfy(properties => properties.Should().ContainKey("ApplicationIcon"));
-        var artifactNames = result.Value.Select(resource => resource.Name).ToList();
+        var artifactNames = artifacts.Select(resource => resource.Name).ToList();
         artifactNames.Should().HaveCount(4);
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64-sfx.exe");
         artifactNames.Should().Contain("TestApp-1.0.0-windows-arm64.msix");
@@ -67,7 +64,7 @@ public class WindowsDeploymentTests
         
         // Verify we can read content after disposal (which happens when ToListAsync completes)
         // This should FAIL if we don't detach
-        var readTasks = result.Value.Select(r => r.Bytes.SelectMany(b => b).ToArray().ToTask());
+        var readTasks = artifacts.Select(r => r.Bytes.SelectMany(b => b).ToArray().ToTask());
         // We expect this to fail or throw if the resource is lazy and file is gone.
         // But since we are mocking ByteSource.FromString("exe"), it's in memory.
         // Wait, the Mock container uses memory sources. 

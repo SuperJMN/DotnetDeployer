@@ -1,22 +1,11 @@
-using CSharpFunctionalExtensions;
-using Zafiro.DivineBytes;
+using DotnetPackaging;
 
 namespace DotnetDeployer.Core;
 
-public class DeploymentSession : IDeploymentSession
+public class DeploymentSession : PackagingSession, IDeploymentSession
 {
-    private readonly IDisposable disposable;
-
-    public DeploymentSession(IObservable<Result<INamedByteSource>> packages, IDisposable disposable)
+    public DeploymentSession(IObservable<INamedByteSource> resources, IEnumerable<IDisposable> disposables)
+        : base(resources, disposables)
     {
-        this.disposable = disposable;
-        Packages = packages;
     }
-
-    public void Dispose()
-    {
-        disposable.Dispose();
-    }
-
-    public IObservable<Result<INamedByteSource>> Packages { get; }
 }
