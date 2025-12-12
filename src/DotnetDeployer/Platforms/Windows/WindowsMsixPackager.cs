@@ -29,8 +29,8 @@ public class WindowsMsixPackager(Maybe<ILogger> logger)
         }
 
         var resource = new Resource($"{baseName}.msix", msixResult.Value);
-        var disposables = container is IDisposable disposable ? new[] { disposable } : Array.Empty<IDisposable>();
-        var package = (IPackage)new Package(resource.Name, resource, disposables);
+        var cleanup = container as IDisposable;
+        var package = (IPackage)new Package(resource.Name, resource, cleanup);
         msixLogger.Execute(log => log.Information("Created {File}", resource.Name));
 
         return Result.Success<IPackage>(package);

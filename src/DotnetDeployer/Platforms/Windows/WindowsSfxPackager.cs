@@ -74,8 +74,7 @@ public class WindowsSfxPackager(IDotnet dotnet, Maybe<ILogger> logger)
         }
 
         var sfxResource = new Resource($"{baseName}-sfx.exe", ByteSource.FromBytes(bytesResult.Value));
-        var disposables = publishDisposable != null ? new[] { publishDisposable } : Array.Empty<IDisposable>();
-        var package = (IPackage)new Package(sfxResource.Name, sfxResource, disposables);
+        var package = (IPackage)new Package(sfxResource.Name, sfxResource, publishDisposable);
         sfxLogger.Execute(log => log.Information("Created SFX executable {File}", package.Name));
         return Result.Success<IPackage>(package);
     }

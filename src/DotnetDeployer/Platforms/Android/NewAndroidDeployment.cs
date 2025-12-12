@@ -25,7 +25,7 @@ public class NewAndroidDeployment(IPublisher publisher, Path projectPath, Androi
         var sharedContainer = new RefCountDisposable(publishedFiles);
         var packages = publishedFiles.Resources
             .Where(source => source.Name.EndsWith("-Signed.apk"))
-            .Select(resource => (IPackage)new Package(resource.Name, resource, new[] { sharedContainer.GetDisposable() }))
+            .Select(resource => (IPackage)new Package(resource.Name, resource, sharedContainer.GetDisposable()))
             .Select(Result.Success<IPackage>)
             .Select(Task.FromResult)
             .ToList();

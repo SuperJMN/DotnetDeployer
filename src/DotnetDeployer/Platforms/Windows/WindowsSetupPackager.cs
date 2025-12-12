@@ -3,7 +3,6 @@ using DotnetPackaging;
 using DotnetPackaging.Exe;
 using System.IO;
 using System.Linq;
-using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Zafiro.DivineBytes;
 
@@ -42,28 +41,17 @@ public class WindowsSetupPackager(Path projectPath, Maybe<ILogger> logger, IExeP
             return Result.Failure<IPackage>(buildResult.Error);
         }
 
-        var session = buildResult.Value;
-        var packages = session.Resources.ToEnumerable().Where(result => string.Equals(result.Name, outputName, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        if (packages.Count == 0)
-        {
-            installerLogger.Execute(log => log.Warning("Windows Setup installer built successfully but resource {Name} was not found in package list.", outputName));
-            session.Dispose();
-            return Result.Failure<IPackage>($"Windows Setup installer built successfully but resource {outputName} was not found in package list.");
-        }
-
-        var resource = packages.First();
-        var package = (IPackage)new Package(outputName, resource, new[] { session });
+        var package = buildResult.Value;
         installerLogger.Execute(log => log.Information("Created Installer {File}", outputName));
 
-        return Result.Success<IPackage>(package);
+        return Result.Success(package);
     }
 
 }
 
 public interface IExePackagingService
 {
-    Task<Result<IResourceSession>> BuildFromProject(
+    Task<Result<IPackage>> BuildFromProject(
         FileInfo projectFile,
         string? runtimeIdentifier,
         bool selfContained,
@@ -79,7 +67,7 @@ public interface IExePackagingService
 
 internal class ExePackagingServiceAdapter : IExePackagingService
 {
-    public Task<Result<IResourceSession>> BuildFromProject(
+    public Task<Result<IPackage>> BuildFromProject(
         FileInfo projectFile,
         string? runtimeIdentifier,
         bool selfContained,

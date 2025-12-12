@@ -69,7 +69,7 @@ public class MacDeployment(IDotnet dotnet, string projectPath, string appName, s
             var baseName = $"{Sanitize(appName)}-{version}-macos-{MacArchitecture[architecture].Suffix}";
             dmgLogger.Execute(log => log.Information("Created {File}", $"{baseName}.dmg"));
             var resource = (INamedByteSource)new Resource($"{baseName}.dmg", ByteSource.FromBytes(bytes));
-            result = Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+            result = Result.Success<IPackage>(new Package(resource.Name, resource, container));
         }
         catch (Exception ex)
         {

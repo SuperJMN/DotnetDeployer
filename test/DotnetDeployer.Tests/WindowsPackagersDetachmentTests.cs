@@ -96,7 +96,7 @@ public class WindowsPackagersDetachmentTests
             this.container = container;
         }
 
-        public Task<Result<IResourceSession>> BuildFromProject(
+        public Task<Result<IPackage>> BuildFromProject(
             FileInfo projectFile,
             string? runtimeIdentifier,
             bool selfContained,
@@ -110,10 +110,8 @@ public class WindowsPackagersDetachmentTests
             IByteSource? setupLogo = null)
         {
             var package = new Resource(outputName, ByteSource.FromString("installer payload"));
-            var session = new PackagingSession(
-                new[] { package }.ToObservable(),
-                Array.Empty<IDisposable>());
-            return Task.FromResult(Result.Success<IResourceSession>(session));
+            var resultPackage = (IPackage)new Package(outputName, package);
+            return Task.FromResult(Result.Success(resultPackage));
         }
     }
 

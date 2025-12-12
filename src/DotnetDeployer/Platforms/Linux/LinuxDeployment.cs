@@ -66,7 +66,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
             var resource = new Resource($"{BuildBaseFileName(architecture)}.appimage", byteSourceResult.Value);
             appImageLogger.Execute(log => log.Information("Created {File}", resource.Name));
-            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, container));
         });
     }
 
@@ -105,7 +105,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
 
             var resource = new Resource($"{BuildBaseFileName(architecture)}.flatpak", bundleResult.Value);
             flatpakLogger.Execute(log => log.Information("Created {File}", resource.Name));
-            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, container));
         });
     }
 
@@ -141,7 +141,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
             var byteSource = DebArchive.DebMixin.ToByteSource(debResult.Value);
             var resource = new Resource($"{BuildBaseFileName(architecture)}.deb", byteSource);
             debLogger.Execute(log => log.Information("Created {File}", resource.Name));
-            return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+            return Result.Success<IPackage>(new Package(resource.Name, resource, container));
         });
     }
 
@@ -168,7 +168,7 @@ public class LinuxDeployment(IDotnet dotnet, string projectPath, AppImageMetadat
                 var bytes = await File.ReadAllBytesAsync(rpmResult.Value.FullName);
                 var resource = new Resource($"{BuildBaseFileName(architecture)}.rpm", ByteSource.FromBytes(bytes));
                 rpmLogger.Execute(log => log.Information("Created {File}", resource.Name));
-                return Result.Success<IPackage>(new Package(resource.Name, resource, new[] { container }));
+                return Result.Success<IPackage>(new Package(resource.Name, resource, container));
             }
             catch (Exception ex)
             {
