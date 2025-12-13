@@ -348,13 +348,7 @@ sealed class ExportCommandFactory
             IList<Result> builds = await deployer.BuildPackages(re)
                 .Select(dep => Observable.FromAsync(() =>
                 {
-                    return dep().Bind(package =>
-                    {
-                        using (package)
-                        {
-                            return WriteArtifact(package, outDir);
-                        }
-                    });
+                    return dep().Bind(package => WriteArtifact(package, outDir));
                 }))
                 .Merge(1)
                 .ToList();
@@ -367,12 +361,17 @@ sealed class ExportCommandFactory
         return command;
     }
 
-    private Task<Result> WriteArtifact(IPackage resource, string outputDirectory)
+    private async Task<Result> WriteArtifact(IPackage resource, string outputDirectory)
     {
-        using (resource)
+        var outputPath = IoPath.Combine(outputDirectory, resource.Name);
+
+        try
         {
-            var outputPath = IoPath.Combine(outputDirectory, resource.Name);
-            return resource.WriteTo(outputPath);
+            return await resource.WriteTo(outputPath);
+        }
+        finally
+        {
+            resource.Dispose();
         }
     }
 
