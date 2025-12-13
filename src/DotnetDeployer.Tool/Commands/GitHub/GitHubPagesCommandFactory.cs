@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.CommandLine;
-using System.IO;
-using System.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Tool.Services;
 using Serilog;

@@ -1,17 +1,10 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Windows;
 using DotnetPackaging;
-using DotnetPackaging.Exe;
 using DotnetPackaging.Publish;
-using FluentAssertions;
 using System.IO.Abstractions;
 // using Zafiro.DivineBytes; already there
 using Zafiro.DivineBytes.System.IO;
-using Zafiro.DivineBytes;
-using System.Reactive.Linq;
 
 namespace DotnetDeployer.Tests;
 

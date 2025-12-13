@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.CommandLine;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using DotnetDeployer.Core;
 using DotnetDeployer.Tool.Services;
 using Serilog;
 using Serilog.Context;

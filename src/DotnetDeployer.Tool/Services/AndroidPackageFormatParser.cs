@@ -1,4 +1,3 @@
-using System;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Platforms.Android;
 

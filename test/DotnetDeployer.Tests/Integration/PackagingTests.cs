@@ -1,11 +1,8 @@
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
-using DotnetDeployer.Platforms.Windows;
 using DotnetPackaging.AppImage.Metadata;
-using FluentAssertions;
 using Xunit.Abstractions;
 using Zafiro.Commands;
-using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.Misc;
 
 namespace DotnetDeployer.Tests.Integration;
@@ -18,27 +15,6 @@ public class PackagingTests(ITestOutputHelper outputHelper)
     public static string DesktopProject = "/mnt/fast/Repos/DotnetDeployer/samples/TestApp/TestApp.Desktop/TestApp.Desktop.csproj";
     public static string AndroidProject = "/mnt/fast/Repos/DotnetDeployer/samples/TestApp/TestApp.Android/TestApp.Android.csproj";
     public static string WasmProject = "/mnt/fast/Repos/DotnetDeployer/samples/TestApp/TestApp.Browser/TestApp.Browser.csproj";
-
-    [Fact(Skip = "Requires sample projects and credentials")]
-    public async Task Test_windows()
-    {
-        var dotnet = new Dotnet(new Command(Maybe<ILogger>.None), Maybe<ILogger>.None);
-
-        var options = new WindowsDeployment.DeploymentOptions
-        {
-            Version = "1.0.0",
-            PackageName = "TestApp"
-        };
-
-        var writeResults = await new Packager(dotnet, Maybe<ILogger>.None)
-            .CreateWindowsPackages(DesktopProject, options)
-            .MapEach(source => source.WriteTo(OutputFolder + "/" + source.Name));
-
-
-        var result = Result.Combine(writeResults);
-
-        result.Should().Succeed();
-    }
 
     [Fact(Skip = "Requires Android sample project")]
     public async Task Test_android()

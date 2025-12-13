@@ -1,11 +1,8 @@
-using System.Linq;
 using System.Text;
 using DotnetDeployer.Core;
-using Zafiro.DivineBytes;
 using DotnetDeployer.Platforms.Windows;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
-using FluentAssertions;
 
 namespace DotnetDeployer.Tests;
 

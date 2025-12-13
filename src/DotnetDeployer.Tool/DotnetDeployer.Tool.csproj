@@ -13,12 +13,6 @@
   <ItemGroup>
     <PackageReference Include="Serilog.Sinks.Console" />
     <PackageReference Include="System.CommandLine" />
-    <PackageReference Include="DotnetPackaging.AppImage" />
-    <PackageReference Include="DotnetPackaging.Flatpak" />
-    <PackageReference Include="DotnetPackaging.Rpm" />
-    <PackageReference Include="DotnetPackaging.Deb" />
-    <PackageReference Include="DotnetPackaging.Msix" />
-    <PackageReference Include="DotnetPackaging.Dmg" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DotnetDeployer\DotnetDeployer.csproj" />

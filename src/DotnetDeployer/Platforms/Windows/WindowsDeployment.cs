@@ -1,7 +1,7 @@
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
-using Zafiro.CSharpFunctionalExtensions;
+using System.IO;
 
 namespace DotnetDeployer.Platforms.Windows;
 

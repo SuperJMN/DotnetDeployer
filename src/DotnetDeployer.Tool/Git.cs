@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using CSharpFunctionalExtensions;
-using DotnetPackaging;
 using Zafiro.Commands;
 
 namespace DotnetDeployer.Tool;

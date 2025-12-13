@@ -6,17 +6,16 @@ using DotnetDeployer.Platforms.Windows;
 using DotnetPackaging;
 using DotnetPackaging.AppImage.Metadata;
 using DotnetPackaging.Publish;
-using System.Reactive.Linq;
-using System.Linq;
+using Zafiro.CSharpFunctionalExtensions;
 
 namespace DotnetDeployer.Core;
 
 public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
 {
-    public IAsyncEnumerable<Result<IPackage>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
+    public IEnumerable<Task<Result<IPackage>>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
     {
         var platformLogger = logger.ForPlatform("Windows");
-        return CreatePlatformPackages(() => new WindowsDeployment(dotnet, path, deploymentOptions, platformLogger).Build());
+        return new WindowsDeployment(dotnet, path, deploymentOptions, platformLogger).Build();
     }
 
     public IAsyncEnumerable<Result<IPackage>> CreateAndroidPackages(Path path, AndroidDeployment.DeploymentOptions options)
@@ -25,8 +24,6 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         var publisher = new DotnetPackaging.Publish.DotnetPublisher(platformLogger);
         return CreatePlatformPackages(() => new NewAndroidDeployment(publisher, path, options, platformLogger).Build());
     }
-
-
 
     public IAsyncEnumerable<Result<IPackage>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
     {
@@ -60,19 +57,16 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
             yield break;
         }
 
-        foreach (var packageTask in builds)
+        var combined = await builds.CombineSequentially();
+        if (combined.IsFailure)
         {
-            Result<IPackage> packageResult;
-            try
-            {
-                packageResult = await packageTask;
-            }
-            catch (Exception ex)
-            {
-                packageResult = Result.Failure<IPackage>($"Packaging task failed: {ex.Message}");
-            }
+            yield return Result.Failure<IPackage>(combined.Error);
+            yield break;
+        }
 
-            yield return packageResult;
+        foreach (var package in combined.Value)
+        {
+            yield return Result.Success(package);
         }
     }
 

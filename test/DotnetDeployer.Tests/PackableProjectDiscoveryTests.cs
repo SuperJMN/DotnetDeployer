@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-using System.Linq;
 using DotnetDeployer.Tool.Services;
 using IOPath = System.IO.Path;
 

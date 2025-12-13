@@ -1,10 +1,6 @@
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Exe;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Platforms.Windows;
 

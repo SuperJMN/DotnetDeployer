@@ -1,14 +1,16 @@
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using DotnetPackaging.Publish;
 using Zafiro.DivineBytes.System.IO;
+using Zafiro.Mixins;
 
 namespace DotnetDeployer.Core;
 
 public class Dotnet : IDotnet
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PublishLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly FileSystem filesystem = new();
     private readonly Maybe<ILogger> logger;
-    private readonly IPackageHistoryProvider packageHistoryProvider;
     private readonly DotnetPublisher publisher = new();
     private readonly ReleaseNotesBuilder releaseNotesBuilder;
 
@@ -16,8 +18,7 @@ public class Dotnet : IDotnet
     {
         Command = command;
         this.logger = logger;
-        this.packageHistoryProvider = packageHistoryProvider ?? new NugetPackageHistoryProvider(logger: logger);
-        releaseNotesBuilder = new ReleaseNotesBuilder(command, this.packageHistoryProvider, logger);
+        releaseNotesBuilder = new ReleaseNotesBuilder(command, packageHistoryProvider ?? new NugetPackageHistoryProvider(logger: logger), logger);
     }
 
     public ICommand Command { get; }
@@ -32,25 +33,32 @@ public class Dotnet : IDotnet
                 request.SelfContained,
                 request.SingleFile));
 
-        var publishResult = await publisher.Publish(request);
-        if (publishResult.IsFailure)
+        var projectKey = System.IO.Path.GetFullPath(request.ProjectPath);
+        var gate = PublishLocks.GetOrAdd(projectKey, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
         {
-            var error = publishResult.Error ?? "Unknown publish error";
-            logger.Execute(log =>
-                log.Error(
-                    "Publishing project {ProjectPath} failed: {Error}",
-                    request.ProjectPath,
-                    error));
+            var publishResult = await publisher.Publish(request);
+            if (publishResult.IsFailure)
+            {
+                var error = publishResult.Error ?? "Unknown publish error";
+                logger.Execute(log =>
+                    log.Error(
+                        "Publishing project {ProjectPath} failed: {Error}",
+                        request.ProjectPath,
+                        error));
 
-            return Result.Failure<IDisposableContainer>(error);
+                return Result.Failure<IDisposableContainer>(error);
+            }
+
+            logger.Debug("Published project {ProjectPath}", request.ProjectPath);
+
+            return Result.Success(publishResult.Value);
         }
-
-        logger.Execute(log =>
-            log.Debug(
-                "Published project {ProjectPath}",
-                request.ProjectPath));
-
-        return Result.Success(publishResult.Value);
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)

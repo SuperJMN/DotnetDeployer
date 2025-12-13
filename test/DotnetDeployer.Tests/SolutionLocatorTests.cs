@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using DotnetDeployer.Tool.Services;
 
 namespace DotnetDeployer.Tests;

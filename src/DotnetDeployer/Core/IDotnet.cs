@@ -1,5 +1,4 @@
 using DotnetPackaging.Publish;
-using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Core;
 

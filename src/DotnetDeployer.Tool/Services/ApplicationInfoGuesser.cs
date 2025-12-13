@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace DotnetDeployer.Tool.Services;
 
 /// <summary>

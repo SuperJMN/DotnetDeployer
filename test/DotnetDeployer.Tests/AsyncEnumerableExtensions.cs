@@ -1,5 +1,3 @@
-using CSharpFunctionalExtensions;
-
 namespace DotnetDeployer.Tests;
 
 public static class AsyncEnumerableExtensions

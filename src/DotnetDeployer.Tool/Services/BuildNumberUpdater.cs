@@ -1,4 +1,3 @@
-using System;
 using CSharpFunctionalExtensions;
 
 namespace DotnetDeployer.Tool.Services;

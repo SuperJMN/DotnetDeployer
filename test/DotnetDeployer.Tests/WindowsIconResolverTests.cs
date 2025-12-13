@@ -1,5 +1,4 @@
 using DotnetDeployer.Platforms.Windows;
-using FluentAssertions;
 using IOPath = System.IO.Path;
 
 namespace DotnetDeployer.Tests;

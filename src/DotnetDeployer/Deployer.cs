@@ -128,17 +128,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
 
         if (dryRun)
         {
-            Context.Logger.Information("Dry run enabled for release {ReleaseName} ({Tag})", releaseData.ReleaseName, releaseData.Tag);
-            await foreach (var fileResult in packagingStrategy.PackageStream(releaseConfig))
-            {
-                if (fileResult.IsFailure)
-                {
-                    return Result.Failure(fileResult.Error);
-                }
-
-                var file = fileResult.Value;
-                Context.Logger.Debug("Dry run artifact: {File}", file.Name);
-            }
+            Context.Logger.Information("Dry run: GitHub release would have been created for {Owner}/{Repository} with tag {Tag}", repositoryConfig.OwnerName, repositoryConfig.RepositoryName, resolved.Tag);
             return Result.Success();
         }
 
@@ -153,25 +143,9 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var release = releaseResult.Value;
         var client = gitHubRelease.CreateClient();
 
-        await foreach (var fileResult in packagingStrategy.PackageStream(releaseConfig))
-        {
-            if (fileResult.IsFailure)
-            {
-                // Consider if we should abort or continue. For now, aborting seems safer. 
-                // We might want to delete the release created? Keeping it simple for now.
-                return Result.Failure(fileResult.Error);
-            }
-
-            var file = fileResult.Value;
-            var uploadResult = await gitHubRelease.UploadAsset(client, release, file);
-            if (uploadResult.IsFailure)
-            {
-                return Result.Failure(uploadResult.Error);
-            }
-        }
-
-        Context.Logger.Information("GitHub release {ReleaseName} published successfully", resolved.ReleaseName);
-        return Result.Success();
+        return await packagingStrategy.PackageForPlatforms(releaseConfig)
+            .Select(task => task.Map(package => gitHubRelease.UploadAsset(client, release, package)))
+            .CombineInOrder();
     }
 
     // Convenience overload to accept Result<ReleaseConfiguration>
@@ -187,14 +161,9 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // Expose packaging-only flow (no publishing)
-    public Task<Result<IEnumerable<IPackage>>> BuildArtifacts(ReleaseConfiguration releaseConfig)
+    public IEnumerable<Task<Result<IPackage>>> BuildPackages(ReleaseConfiguration releaseConfig)
     {
         return packagingStrategy.PackageForPlatforms(releaseConfig);
-    }
-
-    public IAsyncEnumerable<Result<IPackage>> BuildArtifactsStream(ReleaseConfiguration releaseConfig)
-    {
-        return packagingStrategy.PackageStream(releaseConfig);
     }
 
     // Expose WASM site creation

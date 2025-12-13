@@ -1,6 +1,4 @@
-using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
-using FluentAssertions;
 using NuGet.Versioning;
 
 namespace DotnetDeployer.Tests;

@@ -1,11 +1,7 @@
 ﻿using System.Reactive.Disposables;
-using System.Reactive.Linq;
-using CSharpFunctionalExtensions;
 using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Publish;
-using Zafiro.CSharpFunctionalExtensions;
-using Zafiro.DivineBytes;
 
 namespace DotnetDeployer.Platforms.Android;
 

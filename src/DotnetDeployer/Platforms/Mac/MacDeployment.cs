@@ -1,6 +1,4 @@
 using DotnetDeployer.Core;
-using System.IO;
-using System.Linq;
 using DotnetPackaging;
 using DotnetPackaging.Dmg;
 using DotnetPackaging.Publish;

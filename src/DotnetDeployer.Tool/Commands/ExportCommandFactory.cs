@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.CommandLine;
-using System.IO;
-using System.Linq;
 using DotnetDeployer.Core;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Platforms.Android;
@@ -10,8 +6,8 @@ using DotnetDeployer.Tool.Commands.GitHub;
 using DotnetDeployer.Tool.Services;
 using DotnetPackaging;
 using Serilog;
-using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.DivineBytes;
+using Zafiro.Misc;
 using IoPath = System.IO.Path;
 
 namespace DotnetDeployer.Tool.Commands;
@@ -350,55 +346,27 @@ sealed class ExportCommandFactory
 
             var outDir = output.FullName;
             var exportLogger = Log.ForContext("Platform", "Export");
-            Task<Result> WriteArtifact(INamedByteSource resource)
-            {
-                var target = IoPath.Combine(outDir, resource.Name);
-                exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
-                return resource.WriteTo(target)
-                    .Tap(() => exportLogger.Information("Wrote {File}", resource.Name))
-                    .TapError(error => Log.Error("Failed writing {File}: {Error}", resource.Name, error));
-            }
 
-            var writeResult = Result.Success();
-            await foreach (var artifactResult in deployer.BuildArtifactsStream(releaseConfigResult.Value))
+            Task<Result> WriteArtifact(IPackage resource)
             {
-                if (artifactResult.IsFailure)
+                using (resource)
                 {
-                    Log.Error("Failed to build artifact: {Error}", artifactResult.Error);
-                    writeResult = Result.Failure("One or more artifacts failed to build.");
-                    continue; // Or break/return 1 depending on desired behavior. User asked for streaming, usually implies continuation or at least seeing what failed.
-                    // But if one fails, usually strict failure is better for CI/CD.
-                    // However, to keep it simple and safe:
-                    // return 1; 
-                }
-
-                var artifact = artifactResult.Value;
-                var writeOpResult = await WriteArtifact(artifact);
-                if (writeOpResult.IsFailure)
-                {
-                    writeResult = Result.Failure("One or more artifacts failed to write.");
+                    var target = IoPath.Combine(outDir, resource.Name);
+                    exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
+                    return resource.WriteTo(target)
+                        .Tap(() => exportLogger.Information("Wrote {File}", resource.Name))
+                        .TapError(error => Log.Error("Failed writing {File}: {Error}", resource.Name, error));
                 }
             }
 
-            if (writeResult.IsFailure)
-            {
-                return 1;
-            }
+            var exportResult = await deployer.BuildPackages(releaseConfigResult.Value)
+                .Select(task => task.Map(WriteArtifact))
+                .CombineInOrder();
 
-            if (includeWasm && releaseConfigResult.Value.Platforms.HasFlag(TargetPlatform.WebAssembly) && releaseConfigResult.Value.WebAssemblyConfig != null)
-            {
-                var wasmResult = await deployer.CreateWasmSite(releaseConfigResult.Value.WebAssemblyConfig.ProjectPath)
-                    .Bind(site => site.Contents.WriteTo(IoPath.Combine(output.FullName, "wasm")));
-                if (wasmResult.IsFailure)
-                {
-                    Log.Error("Failed to export WASM site: {Error}", wasmResult.Error);
-                    return 1;
-                }
-            }
-
-            var exportLogger2 = Log.ForContext("Platform", "Export");
-            exportLogger2.Information("Artifacts exported successfully to {Dir}", output.FullName);
-            return 0;
+            return exportResult
+                .TapError(e => exportLogger.Error(e))
+                .Tap(_ => exportLogger.Information("Export completed successfully"))
+                .Match(_ => 0, _ => -1);
         });
 
         return command;

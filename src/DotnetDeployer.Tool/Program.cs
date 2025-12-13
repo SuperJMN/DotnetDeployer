@@ -1,8 +1,3 @@
-using System;
-using System.CommandLine;
-using System.CommandLine.Parsing;
-using System.Linq;
-using System.Threading.Tasks;
 using DotnetDeployer.Tool.Commands;
 using DotnetDeployer.Tool.Services;
 using Serilog;

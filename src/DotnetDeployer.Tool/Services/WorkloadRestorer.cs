@@ -1,9 +1,5 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using CSharpFunctionalExtensions;
 using Serilog;
-using Zafiro.CSharpFunctionalExtensions;
 using ZafiroCommand = Zafiro.Commands.Command;
 
 namespace DotnetDeployer.Tool.Services;

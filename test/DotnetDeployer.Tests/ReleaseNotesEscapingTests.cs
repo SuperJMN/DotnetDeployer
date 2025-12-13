@@ -1,5 +1,4 @@
 using DotnetDeployer.Core;
-using FluentAssertions;
 
 namespace DotnetDeployer.Tests;
 

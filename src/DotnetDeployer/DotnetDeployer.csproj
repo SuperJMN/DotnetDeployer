@@ -11,13 +11,12 @@
     <PackageReference Include="Zafiro.DivineBytes" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Exe\DotnetPackaging.Exe.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.AppImage\DotnetPackaging.AppImage.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Deb\DotnetPackaging.Deb.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Flatpak\DotnetPackaging.Flatpak.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Msix\DotnetPackaging.Msix.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Rpm\DotnetPackaging.Rpm.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging.Dmg\DotnetPackaging.Dmg.csproj" />
-    <ProjectReference Include="..\..\..\DotnetPackaging\src\DotnetPackaging\DotnetPackaging.csproj" />
+    <PackageReference Include="DotnetPackaging.Exe" />
+    <PackageReference Include="DotnetPackaging.AppImage" />
+    <PackageReference Include="DotnetPackaging.Deb" />
+    <PackageReference Include="DotnetPackaging.Flatpak" />
+    <PackageReference Include="DotnetPackaging.Msix" />
+    <PackageReference Include="DotnetPackaging.Rpm" />
+    <PackageReference Include="DotnetPackaging.Dmg" />
   </ItemGroup>
 </Project>

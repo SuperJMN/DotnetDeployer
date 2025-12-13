@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace DotnetDeployer.Core;
 
 public static class Directories

@@ -2,8 +2,6 @@ using DotnetDeployer.Core;
 using DotnetPackaging;
 using DotnetPackaging.Msix;
 using DotnetPackaging.Msix.Core.Manifest;
-using Zafiro.DivineBytes;
-using System.Threading.Tasks;
 
 namespace DotnetDeployer.Platforms.Windows;
 

@@ -1,7 +1,3 @@
-using CSharpFunctionalExtensions;
-using DotnetDeployer.Core;
-using Zafiro.DivineBytes;
-
 namespace DotnetDeployer.Platforms.Android;
 
 public static class AndroidDeployment
