@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="../DotnetPackaging/src/DotnetPackaging.Deb/DotnetPackaging.Deb.csproj" />
+  <Project Path="src/DotnetDeployer.Tool.v2/DotnetDeployer.Tool.v2.csproj" />
+  <Project Path="../DotnetPackaging/src/DotnetPackaging/DotnetPackaging.csproj" />
+  <Project Path="src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj" />
+  <Project Path="src/DotnetDeployer/DotnetDeployer.csproj" />
+  <Project Path="test/DotnetDeployer.Tests/DotnetDeployer.Tests.csproj" />
+</Solution>

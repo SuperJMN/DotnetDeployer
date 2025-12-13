@@ -146,8 +146,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var client = gitHubRelease.CreateClient();
 
         var uploadResults = await BuildPackages(releaseConfig)
-            .SelectMany(packageResult =>
-            {
+            .SelectMany(packageResult => {
                 if (packageResult.IsFailure)
                 {
                     return Observable.Return(Result.Failure(packageResult.Error));
