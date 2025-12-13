@@ -14,7 +14,7 @@ public class ReleasePackagingStrategy
         this.logger = logger;
     }
 
-    public IEnumerable<Task<Result<IPackage>>> PackageForPlatforms(ReleaseConfiguration configuration)
+    public IEnumerable<Func<Task<Result<IPackage>>>> PackageForPlatforms(ReleaseConfiguration configuration)
     {
         logger.Execute(l => l.Information("Packaging release for platforms {Platforms}", configuration.Platforms));
 
@@ -104,7 +104,7 @@ public class ReleasePackagingStrategy
         //     // Note: WasmApp is typically deployed to GitHub Pages or similar, not included as release asset
         // }
         
-        return Enumerable.Empty<Task<Result<IPackage>>>();
+        return Enumerable.Empty<Func<Task<Result<IPackage>>>>();
     }
 
     public Task<Result<WasmApp>> CreateWasmSite(string projectPath)

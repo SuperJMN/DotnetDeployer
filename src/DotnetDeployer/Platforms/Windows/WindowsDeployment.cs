@@ -20,24 +20,23 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
     private readonly WindowsSetupPackager setupPackager = new(projectPath, logger);
     private readonly WindowsSfxPackager sfxPackager = new(dotnet, logger);
 
-    public IEnumerable<Task<Result<IPackage>>> Build()
+    public IEnumerable<Func<Task<Result<IPackage>>>> Build()
     {
         var iconResult = iconResolver.Resolve(projectPath);
         if (iconResult.IsFailure)
         {
-            return [Task.FromResult(Result.Failure<IPackage>(iconResult.Error))];
+            yield return () => Task.FromResult(Result.Failure<IPackage>(iconResult.Error));
+            yield break;
         }
 
         var icon = iconResult.Value;
-        
-        return SupportedArchitectures
-            .SelectMany<Architecture, Task<Result<IPackage>>>(architecture =>
-                [
-                    BuildSfxFor(architecture, icon),
-                    BuildMsixFor(architecture, icon),
-                    BuildSetupFor(architecture, icon)
-                ]
-            );
+
+        foreach (var architecture in SupportedArchitectures)
+        {
+            yield return () => BuildSfxFor(architecture, icon);
+            yield return () => BuildMsixFor(architecture, icon);
+            //yield return () => BuildSetupFor(architecture, icon);
+        }
     }
 
     private Task<Result<IPackage>> BuildSfxFor(Architecture architecture, Maybe<WindowsIcon> icon)

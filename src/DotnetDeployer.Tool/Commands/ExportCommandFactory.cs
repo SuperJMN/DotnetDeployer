@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Reactive.Linq;
 using DotnetDeployer.Core;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Platforms.Android;
@@ -6,6 +7,7 @@ using DotnetDeployer.Tool.Commands.GitHub;
 using DotnetDeployer.Tool.Services;
 using DotnetPackaging;
 using Serilog;
+using Zafiro.CSharpFunctionalExtensions;
 using Zafiro.DivineBytes;
 using Zafiro.Misc;
 using IoPath = System.IO.Path;
@@ -338,38 +340,39 @@ sealed class ExportCommandFactory
             }
 
             var releaseConfigResult = builder.Build();
-            if (releaseConfigResult.IsFailure)
-            {
-                Log.Error("Failed to build export configuration: {Error}", releaseConfigResult.Error);
-                return 1;
-            }
-
+           
             var outDir = output.FullName;
-            var exportLogger = Log.ForContext("Platform", "Export");
 
-            Task<Result> WriteArtifact(IPackage resource)
-            {
-                using (resource)
+            var re = releaseConfigResult.Value;
+
+            IList<Result> builds = await deployer.BuildPackages(re)
+                .Select(dep => Observable.FromAsync(() =>
                 {
-                    var target = IoPath.Combine(outDir, resource.Name);
-                    exportLogger.Information("Writing {File} to {Dir}", resource.Name, outDir);
-                    return resource.WriteTo(target)
-                        .Tap(() => exportLogger.Information("Wrote {File}", resource.Name))
-                        .TapError(error => Log.Error("Failed writing {File}: {Error}", resource.Name, error));
-                }
-            }
+                    return dep().Bind(package =>
+                    {
+                        using (package)
+                        {
+                            return WriteArtifact(package, outDir);
+                        }
+                    });
+                }))
+                .Merge(1)
+                .ToList();
 
-            var exportResult = await deployer.BuildPackages(releaseConfigResult.Value)
-                .Select(task => task.Map(WriteArtifact))
-                .CombineInOrder();
-
-            return exportResult
-                .TapError(e => exportLogger.Error(e))
-                .Tap(_ => exportLogger.Information("Export completed successfully"))
-                .Match(_ => 0, _ => -1);
+            var result = builds.Combine();
+            
+            return result.Match(() => 0, _ => -1);
         });
 
         return command;
+    }
+
+    private Task<Result> WriteArtifact(IPackage resource, string path)
+    {
+        using (resource)
+        {
+            return resource.WriteTo(path);
+        }
     }
 
     static List<string> ExtractPrefixes(IEnumerable<SolutionProject> projects, string suffix)

@@ -8,7 +8,6 @@ namespace DotnetDeployer.Core;
 
 public class Dotnet : IDotnet
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> PublishLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly FileSystem filesystem = new();
     private readonly Maybe<ILogger> logger;
     private readonly DotnetPublisher publisher = new();
@@ -23,42 +22,9 @@ public class Dotnet : IDotnet
 
     public ICommand Command { get; }
 
-    public async Task<Result<IDisposableContainer>> Publish(ProjectPublishRequest request)
+    public Task<Result<IDisposableContainer>> Publish(ProjectPublishRequest request)
     {
-        logger.Execute(log =>
-            log.Debug(
-                "Publishing project {ProjectPath} with runtime {Runtime} (SelfContained: {SelfContained}, SingleFile: {SingleFile})",
-                request.ProjectPath,
-                request.Rid.Match(value => value, () => "default"),
-                request.SelfContained,
-                request.SingleFile));
-
-        var projectKey = System.IO.Path.GetFullPath(request.ProjectPath);
-        var gate = PublishLocks.GetOrAdd(projectKey, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync();
-        try
-        {
-            var publishResult = await publisher.Publish(request);
-            if (publishResult.IsFailure)
-            {
-                var error = publishResult.Error ?? "Unknown publish error";
-                logger.Execute(log =>
-                    log.Error(
-                        "Publishing project {ProjectPath} failed: {Error}",
-                        request.ProjectPath,
-                        error));
-
-                return Result.Failure<IDisposableContainer>(error);
-            }
-
-            logger.Debug("Published project {ProjectPath}", request.ProjectPath);
-
-            return Result.Success(publishResult.Value);
-        }
-        finally
-        {
-            gate.Release();
-        }
+        return publisher.Publish(request);
     }
 
     public async Task<Result> Push(string packagePath, string apiKey)

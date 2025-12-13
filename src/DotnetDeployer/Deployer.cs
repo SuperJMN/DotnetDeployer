@@ -143,9 +143,19 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var release = releaseResult.Value;
         var client = gitHubRelease.CreateClient();
 
-        return await packagingStrategy.PackageForPlatforms(releaseConfig)
-            .Select(task => task.Map(package => gitHubRelease.UploadAsset(client, release, package)))
-            .CombineInOrder();
+        var uploadOperations = packagingStrategy.PackageForPlatforms(releaseConfig)
+            .Select(factory => (Func<Task<Result>>)(async () =>
+            {
+                var packageResult = await factory();
+                if (packageResult.IsFailure)
+                {
+                    return Result.Failure(packageResult.Error);
+                }
+
+                return await gitHubRelease.UploadAsset(client, release, packageResult.Value);
+            }));
+
+        return await uploadOperations.CombineSequentially();
     }
 
     // Convenience overload to accept Result<ReleaseConfiguration>
@@ -161,7 +171,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // Expose packaging-only flow (no publishing)
-    public IEnumerable<Task<Result<IPackage>>> BuildPackages(ReleaseConfiguration releaseConfig)
+    public IEnumerable<Func<Task<Result<IPackage>>>> BuildPackages(ReleaseConfiguration releaseConfig)
     {
         return packagingStrategy.PackageForPlatforms(releaseConfig);
     }

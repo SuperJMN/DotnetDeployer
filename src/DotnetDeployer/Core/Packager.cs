@@ -12,7 +12,7 @@ namespace DotnetDeployer.Core;
 
 public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
 {
-    public IEnumerable<Task<Result<IPackage>>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
+    public IEnumerable<Func<Task<Result<IPackage>>>> CreateWindowsPackages(Path path, WindowsDeployment.DeploymentOptions deploymentOptions)
     {
         var platformLogger = logger.ForPlatform("Windows");
         return new WindowsDeployment(dotnet, path, deploymentOptions, platformLogger).Build();
@@ -22,24 +22,27 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
     {
         var platformLogger = logger.ForPlatform("Android");
         var publisher = new DotnetPackaging.Publish.DotnetPublisher(platformLogger);
-        return CreatePlatformPackages(() => new NewAndroidDeployment(publisher, path, options, platformLogger).Build());
+        return CreatePlatformPackages(() => new NewAndroidDeployment(publisher, path, options, platformLogger).Build()
+            .Select(task => (Func<Task<Result<IPackage>>>)(() => task)));
     }
 
     public IAsyncEnumerable<Result<IPackage>> CreateLinuxPackages(Path path, AppImageMetadata metadata)
     {
         var platformLogger = logger.ForPlatform("Linux");
-        return CreatePlatformPackages(() => new LinuxDeployment(dotnet, path, metadata, platformLogger).Build());
+        return CreatePlatformPackages(() => new LinuxDeployment(dotnet, path, metadata, platformLogger).Build()
+            .Select(task => (Func<Task<Result<IPackage>>>)(() => task)));
     }
 
     public IAsyncEnumerable<Result<IPackage>> CreateMacPackages(Path path, string appName, string version)
     {
         var platformLogger = logger.ForPlatform("macOS");
-        return CreatePlatformPackages(() => new MacDeployment(dotnet, path, appName, version, platformLogger).Build());
+        return CreatePlatformPackages(() => new MacDeployment(dotnet, path, appName, version, platformLogger).Build()
+            .Select(task => (Func<Task<Result<IPackage>>>)(() => task)));
     }
 
-    private async IAsyncEnumerable<Result<IPackage>> CreatePlatformPackages(Func<IEnumerable<Task<Result<IPackage>>>> buildFactory)
+    private async IAsyncEnumerable<Result<IPackage>> CreatePlatformPackages(Func<IEnumerable<Func<Task<Result<IPackage>>>>> buildFactory)
     {
-        IEnumerable<Task<Result<IPackage>>> builds;
+        IEnumerable<Func<Task<Result<IPackage>>>> builds;
         string? creationError = null;
         try
         {
@@ -48,7 +51,7 @@ public class Packager(IDotnet dotnet, Maybe<ILogger> logger)
         catch (Exception ex)
         {
             creationError = $"Failed to create build tasks: {ex.Message}";
-            builds = Enumerable.Empty<Task<Result<IPackage>>>();
+            builds = Enumerable.Empty<Func<Task<Result<IPackage>>>>();
         }
 
         if (creationError is not null)
