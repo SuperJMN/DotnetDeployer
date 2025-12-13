@@ -367,11 +367,12 @@ sealed class ExportCommandFactory
         return command;
     }
 
-    private Task<Result> WriteArtifact(IPackage resource, string path)
+    private Task<Result> WriteArtifact(IPackage resource, string outputDirectory)
     {
         using (resource)
         {
-            return resource.WriteTo(path);
+            var outputPath = IoPath.Combine(outputDirectory, resource.Name);
+            return resource.WriteTo(outputPath);
         }
     }
 
