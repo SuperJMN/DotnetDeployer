@@ -1,6 +1,5 @@
 using CSharpFunctionalExtensions;
 using DotnetPackaging;
-using Serilog;
 using Zafiro.DivineBytes;
 using IoPath = System.IO.Path;
 
@@ -8,41 +7,38 @@ namespace DotnetDeployer.Tool.V2.Nuget;
 
 internal sealed class PackageWriter
 {
-    private readonly ILogger logger;
-
-    public PackageWriter(ILogger logger)
-    {
-        this.logger = logger;
-    }
-
     public Result<FileInfo> WritePackage(IPackage package, DirectoryInfo output)
     {
-        if (package == null)
-        {
-            return Result.Failure<FileInfo>("Package cannot be null");
-        }
+        return Result
+            .FailureIf(package == null, "Package cannot be null")
+            .Map(() => package!)
+            .Bind(pkg => EnsureOutput(output).Bind(_ => Result.Success(pkg)))
+            .Bind(pkg => Write(pkg, output));
+    }
 
-        var packageName = package.Name;
-
-        try
+    private static Result<DirectoryInfo> EnsureOutput(DirectoryInfo output)
+    {
+        return Result.Try(() =>
         {
             if (!output.Exists)
             {
                 output.Create();
             }
 
-            var destination = IoPath.Combine(output.FullName, packageName);
+            return output;
+        });
+    }
 
-            using (package)
-            {
-                var writeResult = package.WriteTo(destination).GetAwaiter().GetResult();
-                return writeResult.Map(() => new FileInfo(destination));
-            }
-        }
-        catch (Exception ex)
+    private static Result<FileInfo> Write(IPackage package, DirectoryInfo output)
+    {
+        var destination = IoPath.Combine(output.FullName, package.Name);
+
+        using (package)
         {
-            logger.Error(ex, "Failed to write package {Package}", packageName);
-            return Result.Failure<FileInfo>($"Failed to write package {packageName}: {ex.Message}");
+            return package.WriteTo(destination)
+                .GetAwaiter()
+                .GetResult()
+                .Map(() => new FileInfo(destination));
         }
     }
 }

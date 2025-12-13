@@ -1,23 +1,23 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Tool.V2.Nuget;
+using Serilog;
 using Zafiro.Commands;
 
 namespace DotnetDeployer.Tool.V2.Services;
 
 internal sealed class ToolServices
 {
-    public ToolServices(Serilog.ILogger logger)
+    public ToolServices()
     {
         SolutionProjectReader = new SolutionProjectReader();
         SolutionLocator = new SolutionLocator();
         PackableProjectDiscovery = new PackableProjectDiscovery(SolutionProjectReader);
 
-        var maybeLogger = Maybe<Serilog.ILogger>.From(logger);
-        var command = new Command(maybeLogger);
+        var command = new Command(Maybe<ILogger>.None);
 
-        NugetPackager = new NugetPackager(PackableProjectDiscovery, command, logger);
-        PackageWriter = new PackageWriter(logger);
-        NugetPusher = new NugetPusher(command, logger);
+        NugetPackager = new NugetPackager(PackableProjectDiscovery, command);
+        PackageWriter = new PackageWriter();
+        NugetPusher = new NugetPusher(command);
     }
 
     public SolutionLocator SolutionLocator { get; }

@@ -1,7 +1,8 @@
 using System.CommandLine;
+using System.CommandLine.Invocation;
+using System.Reactive.Linq;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Tool.V2.Services;
-using Serilog;
 
 namespace DotnetDeployer.Tool.V2.Nuget;
 
@@ -50,89 +51,73 @@ internal sealed class NugetCommandFactory
             Description = "Create the packages but do not push them to NuGet."
         };
 
-        command.SetAction(async parseResult =>
-        {
-            return await Handle(
-                parseResult.GetValue(solutionOption),
-                parseResult.GetValue(outputOption),
-                parseResult.GetValue(apiKeyOption),
-                parseResult.GetValue(patternOption),
-                parseResult.GetValue(versionOption),
-                parseResult.GetValue(noPushOption));
-        });
+        command.Add(solutionOption);
+        command.Add(outputOption);
+        command.Add(patternOption);
+        command.Add(versionOption);
+        command.Add(apiKeyOption);
+        command.Add(noPushOption);
+
+        command.SetAction(async parseResult => await Handle(
+            parseResult.GetValue(solutionOption),
+            parseResult.GetValue(outputOption),
+            parseResult.GetValue(apiKeyOption),
+            parseResult.GetValue(patternOption),
+            parseResult.GetValue(versionOption),
+            parseResult.GetValue(noPushOption)));
 
         return command;
     }
 
-    private async Task<int> Handle(FileInfo? solutionFile, DirectoryInfo? outputDirectory, string? apiKey, string? pattern, string? version, bool noPush)
+    private async Task<int> Handle(FileInfo? solution, DirectoryInfo? output, string? apiKey, string? namePattern, string? version, bool noPush)
     {
-        var solutionResult = services.SolutionLocator.Locate(solutionFile);
-        if (solutionResult.IsFailure)
-        {
-            Log.Error(solutionResult.Error);
-            return 1;
-        }
+        var result = await services.SolutionLocator
+            .Locate(solution)
+            .Bind(locatedSolution =>
+                {
+                    var target = output ?? new DirectoryInfo(Path.Combine(locatedSolution.Directory!.FullName, "out", "nuget"));
+                    return noPush
+                        ? WriteOnly(locatedSolution, target, namePattern, version)
+                        : WriteAndPush(locatedSolution, target, namePattern, version, apiKey);
+                });
 
-        var solution = solutionResult.Value;
-        var output = outputDirectory ?? new DirectoryInfo(Path.Combine(solution.Directory!.FullName, "out", "nuget"));
+        var exitCode = result.Match(() => 0, _ => 1);
+        return exitCode;
+    }
 
-        var packageResults = await services.NugetPackager.NugetPackaging(solution, pattern, version);
-        var writtenResults = new List<Result<FileInfo>>(packageResults.Count);
-        foreach (var packageResult in packageResults)
-        {
-            if (packageResult.IsFailure)
-            {
-                writtenResults.Add(Result.Failure<FileInfo>(packageResult.Error));
-                continue;
-            }
+    private async Task<Result> WriteOnly(FileInfo solution, DirectoryInfo output, string? pattern, string? version)
+    {
+        var writeResult = await WritePackages(solution, output, pattern, version);
+        return writeResult.Bind(_ => Result.Success());
+    }
 
-            writtenResults.Add(services.PackageWriter.WritePackage(packageResult.Value, output));
-        }
+    private async Task<Result> WriteAndPush(FileInfo solution, DirectoryInfo output, string? pattern, string? version, string? apiKey)
+    {
+        var packagesResult = await WritePackages(solution, output, pattern, version);
 
-        var failures = writtenResults.Where(r => r.IsFailure).ToList();
-        if (failures.Any())
-        {
-            foreach (var failure in failures)
-            {
-                Log.Error(failure.Error);
-            }
+        return await packagesResult.Match(
+            files => EnsureApiKey(apiKey)
+                .Match(
+                    key => services.NugetPusher.Push(files, key),
+                    error => Task.FromResult(Result.Failure(error))),
+            error => Task.FromResult(Result.Failure(error)));
+    }
 
-            return 1;
-        }
+    private async Task<Result<IEnumerable<FileInfo>>> WritePackages(FileInfo solution, DirectoryInfo output, string? pattern, string? version)
+    {
+        var writeResults = await services.NugetPackager
+            .NugetPackaging(solution, pattern, version)
+            .Select(packageResult => packageResult.Bind(pkg => services.PackageWriter.WritePackage(pkg, output)))
+            .ToList();
 
-        var writtenPackages = writtenResults.Select(r => r.Value).ToList();
-        if (writtenPackages.Count == 0)
-        {
-            Log.Error("No packages were produced");
-            return 1;
-        }
+        return writeResults
+            .Combine()
+            .Ensure(infos => infos.Any(), "No packages were produced");
+    }
 
-        Log.Information("Packages written to {Directory}", output.FullName);
-        foreach (var pkg in writtenPackages)
-        {
-            Log.Information(" - {Package}", pkg.FullName);
-        }
-
-        if (noPush)
-        {
-            return 0;
-        }
-
-        var key = apiKey ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            Log.Error("A NuGet API key must be provided with --api-key or NUGET_API_KEY");
-            return 1;
-        }
-
-        var pushResult = await services.NugetPusher.Push(writtenPackages, key);
-        if (pushResult.IsFailure)
-        {
-            Log.Error(pushResult.Error);
-            return 1;
-        }
-
-        Log.Information("NuGet publishing completed successfully");
-        return 0;
+    private static Result<string> EnsureApiKey(string? apiKey)
+    {
+        return Result.Success(apiKey ?? string.Empty)
+            .Ensure(key => !string.IsNullOrWhiteSpace(key), "A NuGet API key must be provided with --api-key or NUGET_API_KEY");
     }
 }

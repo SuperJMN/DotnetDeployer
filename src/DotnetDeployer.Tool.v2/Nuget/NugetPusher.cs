@@ -1,41 +1,30 @@
 using CSharpFunctionalExtensions;
-using Serilog;
 using Zafiro.Commands;
+using Zafiro.CSharpFunctionalExtensions;
 
 namespace DotnetDeployer.Tool.V2.Nuget;
 
 internal sealed class NugetPusher
 {
     private readonly ICommand command;
-    private readonly ILogger logger;
 
-    public NugetPusher(ICommand command, ILogger logger)
+    public NugetPusher(ICommand command)
     {
         this.command = command;
-        this.logger = logger;
     }
 
     public async Task<Result> Push(IEnumerable<FileInfo> packages, string apiKey)
     {
         var packageList = packages.ToList();
-        if (packageList.Count == 0)
-        {
-            return Result.Failure("No packages were produced to push");
-        }
 
-        foreach (var package in packageList)
-        {
-            logger.Information("Pushing package {Package}", package.Name);
-            var args = BuildPushArguments(package.FullName, apiKey);
-            var pushResult = await command.Execute("dotnet", args);
-            if (pushResult.IsFailure)
-            {
-                return Result.Failure($"Failed to push {package.Name}: {pushResult.Error}");
-            }
-        }
+        var pushResult = await Result
+            .Success(packageList)
+            .Ensure(list => list.Any(), "No packages were produced to push")
+            .Bind(list => list
+                .Select(package => (Func<Task<Result>>)(() => command.Execute("dotnet", BuildPushArguments(package.FullName, apiKey)).Bind(_ => Result.Success())))
+                .CombineSequentially());
 
-        logger.Information("Pushed {Count} package(s) to NuGet.org", packageList.Count);
-        return Result.Success();
+        return pushResult;
     }
 
     private static string BuildPushArguments(string packagePath, string apiKey)

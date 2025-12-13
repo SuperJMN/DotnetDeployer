@@ -1,7 +1,7 @@
+using System.Reactive.Linq;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Tool.V2.Services;
 using DotnetPackaging;
-using Serilog;
 using Zafiro.Commands;
 using Zafiro.DivineBytes;
 using IoPath = System.IO.Path;
@@ -12,74 +12,51 @@ internal sealed class NugetPackager
 {
     private readonly PackableProjectDiscovery projectDiscovery;
     private readonly ICommand command;
-    private readonly ILogger logger;
 
-    public NugetPackager(PackableProjectDiscovery projectDiscovery, ICommand command, ILogger logger)
+    public NugetPackager(PackableProjectDiscovery projectDiscovery, ICommand command)
     {
         this.projectDiscovery = projectDiscovery;
         this.command = command;
-        this.logger = logger;
     }
 
-    public async Task<IReadOnlyList<Result<IPackage>>> NugetPackaging(FileInfo solution, string? pattern, string? version)
+    public IObservable<Result<IPackage>> NugetPackaging(FileInfo solution, string? pattern, string? version)
     {
         var projects = projectDiscovery.Discover(solution, pattern).ToList();
 
-        if (projects.Count == 0)
-        {
-            return new[] { Result.Failure<IPackage>($"No packable projects found in solution '{solution.FullName}'") };
-        }
-
-        logger.Information("Packaging {Count} project(s) from solution {Solution}", projects.Count, solution.FullName);
-
-        var packages = new List<Result<IPackage>>();
-        foreach (var project in projects)
-        {
-            packages.Add(await PackProject(project, version));
-        }
-
-        return packages;
+        return projects.Any()
+            ? projects
+                .ToObservable()
+                .SelectMany(project => Observable.FromAsync(() => PackProject(project, version)))
+            : Observable.Return(Result.Failure<IPackage>($"No packable projects found in solution '{solution.FullName}'"));
     }
 
     private async Task<Result<IPackage>> PackProject(FileInfo project, string? version)
     {
         var output = IoPath.Combine(IoPath.GetTempPath(), "DotnetDeployer.Tool.v2", Guid.NewGuid().ToString("N"));
 
-        try
-        {
-            Directory.CreateDirectory(output);
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure<IPackage>($"Failed to create temp directory for {project.Name}: {ex.Message}");
-        }
+        var createOutput = Result.Try(() => Directory.CreateDirectory(output));
 
-        var args = BuildPackArguments(project.FullName, output, version);
-        logger.Debug("Running dotnet {Args}", args);
+        return await createOutput
+            .Bind(_ => command.Execute("dotnet", BuildPackArguments(project.FullName, output, version), project.DirectoryName ?? string.Empty))
+            .Bind(_ => FindPackage(output, project.Name))
+            .Map(path =>
+            {
+                var byteSource = ByteSource.FromStreamFactory(() => File.OpenRead(path));
+                var cleanup = new DisposableDirectory(output);
+                var package = (IPackage)new Package(IoPath.GetFileName(path), byteSource, cleanup);
+                return package;
+            });
+    }
 
-        var packResult = await command.Execute("dotnet", args, project.DirectoryName ?? string.Empty);
-        if (packResult.IsFailure)
-        {
-            Cleanup(output);
-            return Result.Failure<IPackage>($"dotnet pack failed for {project.FullName}: {packResult.Error}");
-        }
-
+    private static Result<string> FindPackage(string output, string projectName)
+    {
         var packagePath = Directory.EnumerateFiles(output, "*.nupkg")
             .OrderBy(path => path.Contains("symbols", StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault();
-        if (packagePath == null)
-        {
-            Cleanup(output);
-            return Result.Failure<IPackage>($"dotnet pack did not produce a NuGet package for {project.FullName}");
-        }
 
-        var packageName = IoPath.GetFileName(packagePath);
-        logger.Information("Created package {Package} from {Project}", packageName, project.Name);
-
-        var byteSource = ByteSource.FromStreamFactory(() => File.OpenRead(packagePath));
-        var cleanup = new CleanupDisposable(output);
-        var package = (IPackage)new Package(packageName, byteSource, cleanup);
-        return Result.Success(package);
+        return packagePath != null
+            ? Result.Success(packagePath)
+            : Result.Failure<string>($"dotnet pack did not produce a NuGet package for {projectName}");
     }
 
     private static string BuildPackArguments(string projectPath, string outputPath, string? version)
@@ -108,24 +85,12 @@ internal sealed class NugetPackager
         return $"\"{value}\"";
     }
 
-    private void Cleanup(string path)
-    {
-        try
-        {
-            Directory.Delete(path, true);
-        }
-        catch (Exception ex)
-        {
-            logger.Debug("Failed to delete temporary directory {Path}: {Message}", path, ex.Message);
-        }
-    }
-
-    private sealed class CleanupDisposable : IDisposable
+    private sealed class DisposableDirectory : IDisposable
     {
         private readonly string path;
         private bool disposed;
 
-        public CleanupDisposable(string path)
+        public DisposableDirectory(string path)
         {
             this.path = path;
         }
