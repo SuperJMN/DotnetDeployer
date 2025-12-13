@@ -31,7 +31,7 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         }
     }
 
-    public async Task<Result> PublishNugetPackages(IList<string> projectToPublish, string version, string nuGetApiKey, bool push = true)
+    public async Task<Result> PublishNugetPackages(IList<string> projectToPublish, string version, string nuGetApiKey, bool push = true) 
     {
         if (projectToPublish.Any(s => string.IsNullOrWhiteSpace(s)))
         {

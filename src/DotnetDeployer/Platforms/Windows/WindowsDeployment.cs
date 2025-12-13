@@ -35,7 +35,7 @@ public class WindowsDeployment(IDotnet dotnet, Path projectPath, WindowsDeployme
         {
             yield return () => BuildSfxFor(architecture, icon);
             yield return () => BuildMsixFor(architecture, icon);
-            //yield return () => BuildSetupFor(architecture, icon);
+            yield return () => BuildSetupFor(architecture, icon);
         }
     }
 
