@@ -346,11 +346,15 @@ sealed class ExportCommandFactory
             var re = releaseConfigResult.Value;
 
             IList<Result> builds = await deployer.BuildPackages(re)
-                .Select(dep => Observable.FromAsync(() =>
+                .SelectMany(packageResult =>
                 {
-                    return dep().Bind(package => WriteArtifact(package, outDir));
-                }))
-                .Merge(1)
+                    if (packageResult.IsFailure)
+                    {
+                        return Observable.Return(Result.Failure(packageResult.Error));
+                    }
+
+                    return Observable.FromAsync(() => WriteArtifact(packageResult.Value, outDir));
+                })
                 .ToList();
 
             var result = builds.Combine();

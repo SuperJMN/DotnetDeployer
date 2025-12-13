@@ -1,3 +1,5 @@
+using System.Reactive.Concurrency;
+using System.Reactive.Linq;
 using DotnetDeployer.Core;
 using DotnetDeployer.Platforms.Android;
 using DotnetDeployer.Platforms.Wasm;
@@ -143,19 +145,21 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
         var release = releaseResult.Value;
         var client = gitHubRelease.CreateClient();
 
-        var uploadOperations = packagingStrategy.PackageForPlatforms(releaseConfig)
-            .Select(factory => (Func<Task<Result>>)(async () =>
+        var uploadResults = await BuildPackages(releaseConfig)
+            .SelectMany(packageResult =>
             {
-                var packageResult = await factory();
                 if (packageResult.IsFailure)
                 {
-                    return Result.Failure(packageResult.Error);
+                    return Observable.Return(Result.Failure(packageResult.Error));
                 }
 
-                return await gitHubRelease.UploadAsset(client, release, packageResult.Value);
-            }));
+                return Observable.Using(
+                    () => packageResult.Value,
+                    package => Observable.FromAsync(() => gitHubRelease.UploadAsset(client, release, package)));
+            })
+            .ToList();
 
-        return await uploadOperations.CombineSequentially();
+        return uploadResults.Combine();
     }
 
     // Convenience overload to accept Result<ReleaseConfiguration>
@@ -171,9 +175,20 @@ public class Deployer(Context context, Packager packager, Publisher publisher)
     }
 
     // Expose packaging-only flow (no publishing)
-    public IEnumerable<Func<Task<Result<IPackage>>>> BuildPackages(ReleaseConfiguration releaseConfig)
+    public IObservable<Result<IPackage>> BuildPackages(ReleaseConfiguration releaseConfig, IScheduler? scheduler = null, int maxConcurrency = 1)
     {
-        return packagingStrategy.PackageForPlatforms(releaseConfig);
+        if (maxConcurrency < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxConcurrency), "maxConcurrency must be at least 1.");
+        }
+
+        var effectiveScheduler = scheduler ?? Scheduler.Default;
+
+        return Observable.Defer(() =>
+            packagingStrategy.PackageForPlatforms(releaseConfig)
+                .ToObservable(effectiveScheduler)
+                .Select(factory => Observable.Defer(() => Observable.FromAsync(factory, effectiveScheduler)))
+                .Merge(maxConcurrency));
     }
 
     // Expose WASM site creation
