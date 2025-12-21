@@ -1,0 +1,58 @@
+# DotnetDeployer Configuration Example
+# Ejemplo para una aplicación Avalonia con Desktop y Android
+
+version: 1
+
+# NuGet deployment (opcional - para bibliotecas empaquetables)
+nuget:
+  enabled: false  # Desactivado porque es una app, no una biblioteca
+  source: https://api.nuget.org/v3/index.json
+  apiKeyEnvVar: NUGET_API_KEY
+
+# GitHub Release deployment
+github:
+  enabled: true
+  owner: SuperJMN
+  repo: MyAvaloniaApp
+  tokenEnvVar: GITHUB_TOKEN
+  draft: false
+  prerelease: false
+  
+  # Directorio de salida para los paquetes generados (relativo al yaml)
+  outputDir: artifacts
+  
+  packages:
+    # ============================================
+    # Proyecto Desktop (Avalonia)
+    # ============================================
+    - project: src/MyApp.Desktop/MyApp.Desktop.csproj
+      formats:
+        # Linux
+        - type: appimage
+          arch: [x64, arm64]
+        - type: deb
+          arch: [x64]
+        - type: rpm
+          arch: [x64]
+        - type: flatpak
+          arch: [x64]
+        
+        # Windows
+        - type: exe-sfx       # Autoextraíble simple
+          arch: [x64, arm64]
+        - type: exe-setup     # Instalador con wizard
+          arch: [x64]
+        - type: msix
+          arch: [x64]
+        
+        # Mac
+        - type: dmg
+          arch: [x64, arm64]
+    
+    # ============================================
+    # Proyecto Android
+    # ============================================
+    - project: src/MyApp.Android/MyApp.Android.csproj
+      formats:
+        - type: apk   # Para distribución directa / sideloading
+        - type: aab   # Para Google Play Store

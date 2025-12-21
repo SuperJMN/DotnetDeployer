@@ -1,0 +1,264 @@
+using System.Runtime.CompilerServices;
+using CSharpFunctionalExtensions;
+using DotnetDeployer.Configuration;
+using DotnetDeployer.Deployment;
+using DotnetDeployer.Domain;
+using DotnetDeployer.Msbuild;
+using DotnetDeployer.Packaging;
+using DotnetDeployer.Versioning;
+using Serilog;
+using Zafiro.Commands;
+using ICommand = Zafiro.Commands.ICommand;
+
+namespace DotnetDeployer.Orchestration;
+
+/// <summary>
+/// Main orchestrator that coordinates the deployment process.
+/// </summary>
+public class DeploymentOrchestrator
+{
+    private readonly IConfigReader configReader;
+    private readonly IMsbuildMetadataExtractor metadataExtractor;
+    private readonly PackageGeneratorFactory generatorFactory;
+    private readonly INuGetDeployer nugetDeployer;
+    private readonly IGitHubReleaseDeployer githubDeployer;
+    private readonly GitVersionService gitVersionService;
+
+    public DeploymentOrchestrator(
+        ILogger? logger = null,
+        ICommand? command = null,
+        IConfigReader? configReader = null,
+        IMsbuildMetadataExtractor? metadataExtractor = null,
+        PackageGeneratorFactory? generatorFactory = null,
+        INuGetDeployer? nugetDeployer = null,
+        IGitHubReleaseDeployer? githubDeployer = null,
+        GitVersionService? gitVersionService = null)
+    {
+        var cmd = command ?? new Command(Maybe.From(logger));
+
+        this.configReader = configReader ?? new ConfigReader();
+        this.metadataExtractor = metadataExtractor ?? new MsbuildMetadataExtractor();
+        this.generatorFactory = generatorFactory ?? new PackageGeneratorFactory(cmd);
+        this.nugetDeployer = nugetDeployer ?? new NuGetDeployer(cmd);
+        this.githubDeployer = githubDeployer ?? new GitHubReleaseDeployer();
+        this.gitVersionService = gitVersionService ?? new GitVersionService(cmd);
+    }
+
+    public async Task<Result> RunAsync(string configPath, DeployOptions options, ILogger logger)
+    {
+        logger.Information("Starting deployment from {ConfigPath}", configPath);
+
+        return await configReader.Read(configPath)
+            .Bind(async config =>
+            {
+                var configDir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
+                var errors = new List<string>();
+
+                // Debug: log config
+                logger.Debug("Config loaded: NuGet={NuGet}, GitHub={GitHub}",
+                    config.NuGet?.Enabled ?? false,
+                    config.GitHub?.Enabled ?? false);
+                logger.Debug("GitHub packages count: {Count}", config.GitHub?.Packages?.Count ?? 0);
+
+                // NuGet deployment
+                if (!options.SkipNuGet && config.NuGet?.Enabled == true)
+                {
+                    var solutionPath = FindSolution(configDir);
+                    if (solutionPath.HasValue)
+                    {
+                        var nugetResult = await nugetDeployer.DeployAsync(
+                            solutionPath.Value,
+                            config.NuGet,
+                            options.DryRun,
+                            logger);
+
+                        if (nugetResult.IsFailure)
+                        {
+                            errors.Add($"NuGet deployment failed: {nugetResult.Error}");
+                        }
+                    }
+                    else
+                    {
+                        logger.Warning("No solution file found, skipping NuGet deployment");
+                    }
+                }
+
+                // GitHub release deployment
+                if (!options.SkipGitHub && config.GitHub?.Enabled == true)
+                {
+                    var githubResult = await DeployGitHubAsync(config.GitHub, configDir, options, logger);
+                    if (githubResult.IsFailure)
+                    {
+                        errors.Add($"GitHub deployment failed: {githubResult.Error}");
+                    }
+                }
+
+                if (errors.Count > 0)
+                {
+                    return Result.Failure(string.Join("; ", errors));
+                }
+
+                logger.Information("Deployment completed successfully");
+                return Result.Success();
+            });
+    }
+
+    private async Task<Result> DeployGitHubAsync(
+        GitHubConfig config,
+        string configDir,
+        DeployOptions options,
+        ILogger logger)
+    {
+        // Determine version
+        string version;
+        if (!string.IsNullOrEmpty(options.VersionOverride))
+        {
+            version = options.VersionOverride;
+            logger.Information("Using version override: {Version}", version);
+        }
+        else
+        {
+            // Try GitVersion first
+            var gitVersionResult = await gitVersionService.GetVersionAsync(configDir, logger);
+            if (gitVersionResult.IsSuccess)
+            {
+                version = gitVersionResult.Value;
+            }
+            else
+            {
+                // Fallback: try to get version from first project
+                logger.Warning("GitVersion failed, falling back to MSBuild metadata: {Error}", gitVersionResult.Error);
+                var firstProject = config.Packages.FirstOrDefault()?.Project;
+                if (firstProject != null)
+                {
+                    var projectPath = Path.IsPathRooted(firstProject)
+                        ? firstProject
+                        : Path.Combine(configDir, firstProject);
+
+                    var metadata = await metadataExtractor.ExtractAsync(projectPath);
+                    version = metadata.IsSuccess ? metadata.Value.Version ?? "1.0.0" : "1.0.0";
+                }
+                else
+                {
+                    version = "1.0.0";
+                }
+            }
+        }
+
+        logger.Information("Deploying version {Version}", version);
+
+        var packages = GeneratePackagesAsync(config, configDir, version, logger);
+
+        return await githubDeployer.DeployAsync(config, version, packages, options.DryRun, logger);
+    }
+
+    private async IAsyncEnumerable<GeneratedPackage> GeneratePackagesAsync(
+        GitHubConfig config,
+        string configDir,
+        string version,
+        ILogger logger,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        // Use custom output directory if specified, otherwise use temp
+        string outputDir;
+        bool cleanupOnFinish;
+
+        if (!string.IsNullOrEmpty(config.OutputDir))
+        {
+            outputDir = Path.IsPathRooted(config.OutputDir)
+                ? config.OutputDir
+                : Path.Combine(configDir, config.OutputDir);
+            cleanupOnFinish = false;
+        }
+        else
+        {
+            // Default to config directory (where deployer.yaml is)
+            outputDir = configDir;
+            cleanupOnFinish = false;
+        }
+
+        logger.Information("Packages will be saved to: {OutputDir}", outputDir);
+        Directory.CreateDirectory(outputDir);
+
+        try
+        {
+            foreach (var projectConfig in config.Packages)
+            {
+                var projectPath = Path.IsPathRooted(projectConfig.Project)
+                    ? projectConfig.Project
+                    : Path.Combine(configDir, projectConfig.Project);
+
+                logger.Debug("Processing project: {Project}", projectPath);
+
+                var metadataResult = await metadataExtractor.ExtractAsync(projectPath);
+                if (metadataResult.IsFailure)
+                {
+                    logger.Error("Failed to extract metadata from {Project}: {Error}", projectPath, metadataResult.Error);
+                    continue;
+                }
+
+                var metadata = metadataResult.Value;
+
+                // Override version with the global version from GitVersion
+                metadata = metadata with { Version = version };
+
+                foreach (var formatConfig in projectConfig.Formats)
+                {
+                    var packageType = formatConfig.GetPackageType();
+                    var generator = generatorFactory.GetGenerator(packageType);
+
+                    foreach (var arch in formatConfig.GetArchitectures())
+                    {
+                        logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
+
+                        var result = await generator.GenerateAsync(projectPath, arch, metadata, outputDir, logger);
+
+                        if (result.IsSuccess)
+                        {
+                            yield return result.Value;
+                        }
+                        else
+                        {
+                            logger.Error("Failed to generate {Type} ({Arch}): {Error}", packageType, arch, result.Error);
+                        }
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // Cleanup only if using temp directory
+            if (cleanupOnFinish)
+            {
+                try
+                {
+                    if (Directory.Exists(outputDir))
+                    {
+                        Directory.Delete(outputDir, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+    }
+
+    private static Maybe<string> FindSolution(string directory)
+    {
+        var slnxFiles = Directory.GetFiles(directory, "*.slnx");
+        if (slnxFiles.Length > 0)
+        {
+            return Maybe.From(slnxFiles[0]);
+        }
+
+        var slnFiles = Directory.GetFiles(directory, "*.sln");
+        if (slnFiles.Length > 0)
+        {
+            return Maybe.From(slnFiles[0]);
+        }
+
+        return Maybe<string>.None;
+    }
+}

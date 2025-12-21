@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/DotnetDeployer/DotnetDeployer.csproj" />
+  <Project Path="src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj" />
+</Solution>
