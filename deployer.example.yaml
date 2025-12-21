@@ -1,11 +1,11 @@
 # DotnetDeployer Configuration Example
-# Ejemplo para una aplicación Avalonia con Desktop y Android
+# Example for an Avalonia application with Desktop, Android and WebAssembly
 
 version: 1
 
-# NuGet deployment (opcional - para bibliotecas empaquetables)
+# NuGet deployment (optional - for packable libraries)
 nuget:
-  enabled: false  # Desactivado porque es una app, no una biblioteca
+  enabled: false  # Disabled because this is an app, not a library
   source: https://api.nuget.org/v3/index.json
   apiKeyEnvVar: NUGET_API_KEY
 
@@ -18,12 +18,12 @@ github:
   draft: false
   prerelease: false
   
-  # Directorio de salida para los paquetes generados (relativo al yaml)
+  # Output directory for generated packages (relative to yaml)
   outputDir: artifacts
   
   packages:
     # ============================================
-    # Proyecto Desktop (Avalonia)
+    # Desktop Project (Avalonia)
     # ============================================
     - project: src/MyApp.Desktop/MyApp.Desktop.csproj
       formats:
@@ -38,9 +38,9 @@ github:
           arch: [x64]
         
         # Windows
-        - type: exe-sfx       # Autoextraíble simple
+        - type: exe-sfx       # Simple self-extracting
           arch: [x64, arm64]
-        - type: exe-setup     # Instalador con wizard
+        - type: exe-setup     # Installer with wizard
           arch: [x64]
         - type: msix
           arch: [x64]
@@ -50,9 +50,22 @@ github:
           arch: [x64, arm64]
     
     # ============================================
-    # Proyecto Android
+    # Android Project
     # ============================================
     - project: src/MyApp.Android/MyApp.Android.csproj
       formats:
-        - type: apk   # Para distribución directa / sideloading
-        - type: aab   # Para Google Play Store
+        - type: apk   # For direct distribution / sideloading
+        - type: aab   # For Google Play Store
+
+# GitHub Pages deployment (for WebAssembly applications)
+githubPages:
+  enabled: true
+  owner: SuperJMN
+  repo: MyApp-Pages  # Dedicated repo for GitHub Pages
+  tokenEnvVar: GITHUB_TOKEN
+  branch: main  # Branch where it will be deployed (default: main)
+  customDomain: myapp.example.com  # Optional: custom domain
+  
+  projects:
+    - project: src/MyApp.Browser/MyApp.Browser.csproj
+      # customDomain: custom.example.com  # Optional: overrides global setting

@@ -22,6 +22,7 @@ public class DeploymentOrchestrator
     private readonly PackageGeneratorFactory generatorFactory;
     private readonly INuGetDeployer nugetDeployer;
     private readonly IGitHubReleaseDeployer githubDeployer;
+    private readonly IGitHubPagesDeployer githubPagesDeployer;
     private readonly GitVersionService gitVersionService;
 
     public DeploymentOrchestrator(
@@ -32,6 +33,7 @@ public class DeploymentOrchestrator
         PackageGeneratorFactory? generatorFactory = null,
         INuGetDeployer? nugetDeployer = null,
         IGitHubReleaseDeployer? githubDeployer = null,
+        IGitHubPagesDeployer? githubPagesDeployer = null,
         GitVersionService? gitVersionService = null)
     {
         var cmd = command ?? new Command(Maybe.From(logger));
@@ -41,10 +43,11 @@ public class DeploymentOrchestrator
         this.generatorFactory = generatorFactory ?? new PackageGeneratorFactory(cmd);
         this.nugetDeployer = nugetDeployer ?? new NuGetDeployer(cmd);
         this.githubDeployer = githubDeployer ?? new GitHubReleaseDeployer();
+        this.githubPagesDeployer = githubPagesDeployer ?? new GitHubPagesDeployer(cmd);
         this.gitVersionService = gitVersionService ?? new GitVersionService(cmd);
     }
 
-    public async Task<Result> RunAsync(string configPath, DeployOptions options, ILogger logger)
+    public async Task<Result> Run(string configPath, DeployOptions options, ILogger logger)
     {
         logger.Information("Starting deployment from {ConfigPath}", configPath);
 
@@ -66,7 +69,7 @@ public class DeploymentOrchestrator
                     var solutionPath = FindSolution(configDir);
                     if (solutionPath.HasValue)
                     {
-                        var nugetResult = await nugetDeployer.DeployAsync(
+                        var nugetResult = await nugetDeployer.Deploy(
                             solutionPath.Value,
                             config.NuGet,
                             options.DryRun,
@@ -86,10 +89,20 @@ public class DeploymentOrchestrator
                 // GitHub release deployment
                 if (!options.SkipGitHub && config.GitHub?.Enabled == true)
                 {
-                    var githubResult = await DeployGitHubAsync(config.GitHub, configDir, options, logger);
+                    var githubResult = await DeployGitHub(config.GitHub, configDir, options, logger);
                     if (githubResult.IsFailure)
                     {
                         errors.Add($"GitHub deployment failed: {githubResult.Error}");
+                    }
+                }
+
+                // GitHub Pages deployment
+                if (config.GitHubPages?.Enabled == true)
+                {
+                    var pagesResult = await githubPagesDeployer.Deploy(config.GitHubPages, options.DryRun, configDir, logger);
+                    if (pagesResult.IsFailure)
+                    {
+                        errors.Add($"GitHub Pages deployment failed: {pagesResult.Error}");
                     }
                 }
 
@@ -103,7 +116,7 @@ public class DeploymentOrchestrator
             });
     }
 
-    private async Task<Result> DeployGitHubAsync(
+    private async Task<Result> DeployGitHub(
         GitHubConfig config,
         string configDir,
         DeployOptions options,
@@ -119,7 +132,7 @@ public class DeploymentOrchestrator
         else
         {
             // Try GitVersion first
-            var gitVersionResult = await gitVersionService.GetVersionAsync(configDir, logger);
+            var gitVersionResult = await gitVersionService.GetVersion(configDir, logger);
             if (gitVersionResult.IsSuccess)
             {
                 version = gitVersionResult.Value;
@@ -135,7 +148,7 @@ public class DeploymentOrchestrator
                         ? firstProject
                         : Path.Combine(configDir, firstProject);
 
-                    var metadata = await metadataExtractor.ExtractAsync(projectPath);
+                    var metadata = await metadataExtractor.Extract(projectPath);
                     version = metadata.IsSuccess ? metadata.Value.Version ?? "1.0.0" : "1.0.0";
                 }
                 else
@@ -147,12 +160,12 @@ public class DeploymentOrchestrator
 
         logger.Information("Deploying version {Version}", version);
 
-        var packages = GeneratePackagesAsync(config, configDir, version, logger);
+        var packages = GeneratePackages(config, configDir, version, logger);
 
-        return await githubDeployer.DeployAsync(config, version, packages, options.DryRun, logger);
+        return await githubDeployer.Deploy(config, version, packages, options.DryRun, logger);
     }
 
-    private async IAsyncEnumerable<GeneratedPackage> GeneratePackagesAsync(
+    private async IAsyncEnumerable<GeneratedPackage> GeneratePackages(
         GitHubConfig config,
         string configDir,
         string version,
@@ -190,7 +203,7 @@ public class DeploymentOrchestrator
 
                 logger.Debug("Processing project: {Project}", projectPath);
 
-                var metadataResult = await metadataExtractor.ExtractAsync(projectPath);
+                var metadataResult = await metadataExtractor.Extract(projectPath);
                 if (metadataResult.IsFailure)
                 {
                     logger.Error("Failed to extract metadata from {Project}: {Error}", projectPath, metadataResult.Error);
@@ -211,7 +224,7 @@ public class DeploymentOrchestrator
                     {
                         logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
 
-                        var result = await generator.GenerateAsync(projectPath, arch, metadata, outputDir, logger);
+                        var result = await generator.Generate(projectPath, arch, metadata, outputDir, logger);
 
                         if (result.IsSuccess)
                         {

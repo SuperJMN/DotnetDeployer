@@ -15,4 +15,7 @@ public class DeployerConfig
 
     [YamlMember(Alias = "github")]
     public GitHubConfig? GitHub { get; set; }
+
+    [YamlMember(Alias = "githubPages")]
+    public GitHubPagesConfig? GitHubPages { get; set; }
 }
