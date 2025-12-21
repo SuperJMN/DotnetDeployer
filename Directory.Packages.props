@@ -1,0 +1,23 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.*" />
+    <PackageVersion Include="YamlDotNet" Version="16.*" />
+    <PackageVersion Include="Serilog" Version="4.*" />
+    <PackageVersion Include="Octokit" Version="14.*" />
+    <PackageVersion Include="Zafiro" Version="45.0.4" />
+    <PackageVersion Include="DotnetPackaging" Version="9.0.5" />
+    <PackageVersion Include="DotnetPackaging.AppImage" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Deb" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Rpm" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Flatpak" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Dmg" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Exe" Version="9.*" />
+    <PackageVersion Include="DotnetPackaging.Msix" Version="9.*" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.1" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.*" />
+  </ItemGroup>
+</Project>

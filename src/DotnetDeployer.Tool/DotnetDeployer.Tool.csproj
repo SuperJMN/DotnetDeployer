@@ -11,8 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.CommandLine" Version="2.*" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.*" />
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Serilog.Sinks.Console" />
   </ItemGroup>
 
   <ItemGroup>
