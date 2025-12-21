@@ -21,22 +21,22 @@ public class GitVersionService
     /// Gets the SemVer version using GitVersion.
     /// Will install GitVersion tool if not present.
     /// </summary>
-    public async Task<Result<string>> GetVersionAsync(string workingDirectory, ILogger logger)
+    public async Task<Result<string>> GetVersion(string workingDirectory, ILogger logger)
     {
         logger.Debug("Getting version using GitVersion in {Dir}", workingDirectory);
 
         // Ensure GitVersion is installed
-        var installResult = await EnsureGitVersionInstalledAsync(logger);
+        var installResult = await EnsureGitVersionInstalled(logger);
         if (installResult.IsFailure)
         {
             return Result.Failure<string>(installResult.Error);
         }
 
         // Run GitVersion
-        return await RunGitVersionAsync(workingDirectory, logger);
+        return await RunGitVersion(workingDirectory, logger);
     }
 
-    private async Task<Result> EnsureGitVersionInstalledAsync(ILogger logger)
+    private async Task<Result> EnsureGitVersionInstalled(ILogger logger)
     {
         // Check if GitVersion is already installed
         var checkResult = await command.Execute("dotnet", "tool list -g");
@@ -64,7 +64,7 @@ public class GitVersionService
         return Result.Success();
     }
 
-    private async Task<Result<string>> RunGitVersionAsync(string workingDirectory, ILogger logger)
+    private async Task<Result<string>> RunGitVersion(string workingDirectory, ILogger logger)
     {
         // Run dotnet-gitversion and capture output
         var result = await command.Execute("dotnet-gitversion", "/showvariable SemVer", workingDirectory);

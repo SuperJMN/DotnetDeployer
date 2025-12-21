@@ -18,7 +18,7 @@ public class NuGetDeployer : INuGetDeployer
         this.command = command ?? new Command(Maybe<ILogger>.None);
     }
 
-    public async Task<Result> DeployAsync(string solutionPath, NuGetConfig config, bool dryRun, ILogger logger)
+    public async Task<Result> Deploy(string solutionPath, NuGetConfig config, bool dryRun, ILogger logger)
     {
         logger.Information("Starting NuGet deployment from {Solution}", solutionPath);
 

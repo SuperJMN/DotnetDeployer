@@ -7,5 +7,5 @@ namespace DotnetDeployer.Msbuild;
 /// </summary>
 public interface IMsbuildMetadataExtractor
 {
-    Task<Result<ProjectMetadata>> ExtractAsync(string projectPath);
+    Task<Result<ProjectMetadata>> Extract(string projectPath);
 }

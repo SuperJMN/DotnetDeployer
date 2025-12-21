@@ -12,7 +12,7 @@ public interface IPackageGenerator
 {
     PackageType Type { get; }
 
-    Task<Result<GeneratedPackage>> GenerateAsync(
+    Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

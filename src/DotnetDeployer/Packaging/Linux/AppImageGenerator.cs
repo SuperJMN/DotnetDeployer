@@ -15,7 +15,7 @@ public class AppImageGenerator : IPackageGenerator
 {
     public PackageType Type => PackageType.AppImage;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

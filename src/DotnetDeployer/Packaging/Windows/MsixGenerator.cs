@@ -15,7 +15,7 @@ public class MsixGenerator : IPackageGenerator
 {
     public PackageType Type => PackageType.Msix;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

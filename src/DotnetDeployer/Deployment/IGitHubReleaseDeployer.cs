@@ -10,7 +10,7 @@ namespace DotnetDeployer.Deployment;
 /// </summary>
 public interface IGitHubReleaseDeployer
 {
-    Task<Result> DeployAsync(
+    Task<Result> Deploy(
         GitHubConfig config,
         string version,
         IAsyncEnumerable<GeneratedPackage> packages,

@@ -12,7 +12,7 @@ namespace DotnetDeployer.Deployment;
 /// </summary>
 public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 {
-    public async Task<Result> DeployAsync(
+    public async Task<Result> Deploy(
         GitHubConfig config,
         string version,
         IAsyncEnumerable<GeneratedPackage> packages,

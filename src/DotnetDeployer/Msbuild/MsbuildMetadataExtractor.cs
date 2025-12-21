@@ -32,7 +32,7 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
         this.logger = logger ?? Log.Logger;
     }
 
-    public async Task<Result<ProjectMetadata>> ExtractAsync(string projectPath)
+    public async Task<Result<ProjectMetadata>> Extract(string projectPath)
     {
         logger.Debug("Extracting metadata from {ProjectPath}", projectPath);
 
@@ -43,7 +43,7 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
 
             foreach (var prop in PropertiesToExtract)
             {
-                var value = await GetPropertyAsync(projectPath, prop);
+                var value = await GetProperty(projectPath, prop);
                 if (!string.IsNullOrWhiteSpace(value))
                 {
                     properties[prop] = value;
@@ -76,7 +76,7 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
         });
     }
 
-    private static async Task<string?> GetPropertyAsync(string projectPath, string propertyName)
+    private static async Task<string?> GetProperty(string projectPath, string propertyName)
     {
         var psi = new ProcessStartInfo
         {

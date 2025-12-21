@@ -15,7 +15,7 @@ public class DmgGenerator : IPackageGenerator
 {
     public PackageType Type => PackageType.Dmg;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

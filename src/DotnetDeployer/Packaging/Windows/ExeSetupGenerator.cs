@@ -15,7 +15,7 @@ public class ExeSetupGenerator : IPackageGenerator
 {
     public PackageType Type => PackageType.ExeSetup;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

@@ -23,7 +23,7 @@ public class AabGenerator : IPackageGenerator
 
     public PackageType Type => PackageType.Aab;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,

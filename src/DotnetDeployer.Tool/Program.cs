@@ -65,7 +65,7 @@ public static class Program
                 SkipGitHub = skipGitHub
             };
 
-            var result = await orchestrator.RunAsync(config.FullName, options, Log.Logger);
+            var result = await orchestrator.Run(config.FullName, options, Log.Logger);
 
             if (result.IsFailure)
             {

@@ -15,7 +15,7 @@ public class ExeSfxGenerator : IPackageGenerator
 {
     public PackageType Type => PackageType.ExeSfx;
 
-    public async Task<Result<GeneratedPackage>> GenerateAsync(
+    public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
         ProjectMetadata metadata,
