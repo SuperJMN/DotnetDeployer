@@ -57,6 +57,14 @@ public class DeploymentOrchestrator
                 var configDir = Path.GetDirectoryName(Path.GetFullPath(configPath))!;
                 var errors = new List<string>();
 
+                // Determine effective version early for logging and CI build naming
+                var version = await DetermineVersion(configDir, options, logger);
+                logger.Information("Effective version: {Version}", version);
+
+                // Emit Azure Pipelines build naming command (##vso pattern)
+                // This will be recognized by Azure DevOps and update the build number
+                Console.WriteLine($"##vso[build.updatebuildnumber]{version}");
+
                 // Debug: log config
                 logger.Debug("Config loaded: NuGet={NuGet}, GitHub={GitHub}",
                     config.NuGet?.Enabled ?? false,
@@ -116,48 +124,35 @@ public class DeploymentOrchestrator
             });
     }
 
+    /// <summary>
+    /// Determines the effective version for the deployment.
+    /// Uses GitVersion if available, otherwise falls back to 1.0.0.
+    /// </summary>
+    private async Task<string> DetermineVersion(string configDir, DeployOptions options, ILogger logger)
+    {
+        if (!string.IsNullOrEmpty(options.VersionOverride))
+        {
+            logger.Debug("Using version override: {Version}", options.VersionOverride);
+            return options.VersionOverride;
+        }
+
+        var gitVersionResult = await gitVersionService.GetVersion(configDir, logger);
+        if (gitVersionResult.IsSuccess)
+        {
+            return gitVersionResult.Value;
+        }
+
+        logger.Warning("GitVersion failed, using fallback version 1.0.0: {Error}", gitVersionResult.Error);
+        return "1.0.0";
+    }
+
     private async Task<Result> DeployGitHub(
         GitHubConfig config,
         string configDir,
         DeployOptions options,
         ILogger logger)
     {
-        // Determine version
-        string version;
-        if (!string.IsNullOrEmpty(options.VersionOverride))
-        {
-            version = options.VersionOverride;
-            logger.Information("Using version override: {Version}", version);
-        }
-        else
-        {
-            // Try GitVersion first
-            var gitVersionResult = await gitVersionService.GetVersion(configDir, logger);
-            if (gitVersionResult.IsSuccess)
-            {
-                version = gitVersionResult.Value;
-            }
-            else
-            {
-                // Fallback: try to get version from first project
-                logger.Warning("GitVersion failed, falling back to MSBuild metadata: {Error}", gitVersionResult.Error);
-                var firstProject = config.Packages.FirstOrDefault()?.Project;
-                if (firstProject != null)
-                {
-                    var projectPath = Path.IsPathRooted(firstProject)
-                        ? firstProject
-                        : Path.Combine(configDir, firstProject);
-
-                    var metadata = await metadataExtractor.Extract(projectPath);
-                    version = metadata.IsSuccess ? metadata.Value.Version ?? "1.0.0" : "1.0.0";
-                }
-                else
-                {
-                    version = "1.0.0";
-                }
-            }
-        }
-
+        var version = await DetermineVersion(configDir, options, logger);
         logger.Information("Deploying version {Version}", version);
 
         var packages = GeneratePackages(config, configDir, version, logger);
