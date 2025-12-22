@@ -26,43 +26,27 @@ public static class Program
             Description = "Simulate deployment without making changes"
         };
 
-        var versionOption = new Option<string?>("--ver", "-v")
+        var versionOption = new Option<string?>("--release-version", "-v")
         {
             Description = "Override version for the release"
-        };
-
-        var skipNuGetOption = new Option<bool>("--skip-nuget")
-        {
-            Description = "Skip NuGet deployment"
-        };
-
-        var skipGitHubOption = new Option<bool>("--skip-github")
-        {
-            Description = "Skip GitHub release deployment"
         };
 
         var rootCommand = new RootCommand("DotnetDeployer - Deploy .NET projects to NuGet and GitHub");
         rootCommand.Add(configOption);
         rootCommand.Add(dryRunOption);
         rootCommand.Add(versionOption);
-        rootCommand.Add(skipNuGetOption);
-        rootCommand.Add(skipGitHubOption);
 
         rootCommand.SetAction(async (ParseResult parseResult) =>
         {
             var config = parseResult.GetValue(configOption) ?? new FileInfo("deployer.yaml");
             var dryRun = parseResult.GetValue(dryRunOption);
             var version = parseResult.GetValue(versionOption);
-            var skipNuGet = parseResult.GetValue(skipNuGetOption);
-            var skipGitHub = parseResult.GetValue(skipGitHubOption);
 
             var orchestrator = new DeploymentOrchestrator(Log.Logger);
             var options = new DeployOptions
             {
                 DryRun = dryRun,
-                VersionOverride = version,
-                SkipNuGet = skipNuGet,
-                SkipGitHub = skipGitHub
+                VersionOverride = version
             };
 
             var result = await orchestrator.Run(config.FullName, options, Log.Logger);

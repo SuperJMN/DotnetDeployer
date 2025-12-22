@@ -72,7 +72,7 @@ public class DeploymentOrchestrator
                 logger.Debug("GitHub packages count: {Count}", config.GitHub?.Packages?.Count ?? 0);
 
                 // NuGet deployment
-                if (!options.SkipNuGet && config.NuGet?.Enabled == true)
+                if (config.NuGet?.Enabled == true)
                 {
                     var solutionPath = FindSolution(configDir);
                     if (solutionPath.HasValue)
@@ -95,7 +95,7 @@ public class DeploymentOrchestrator
                 }
 
                 // GitHub release deployment
-                if (!options.SkipGitHub && config.GitHub?.Enabled == true)
+                if (config.GitHub?.Enabled == true)
                 {
                     var githubResult = await DeployGitHub(config.GitHub, configDir, options, logger);
                     if (githubResult.IsFailure)
