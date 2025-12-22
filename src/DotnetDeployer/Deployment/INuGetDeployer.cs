@@ -9,5 +9,5 @@ namespace DotnetDeployer.Deployment;
 /// </summary>
 public interface INuGetDeployer
 {
-    Task<Result> Deploy(string solutionPath, NuGetConfig config, bool dryRun, ILogger logger);
+    Task<Result> Deploy(string solutionPath, NuGetConfig config, string version, bool dryRun, ILogger logger);
 }

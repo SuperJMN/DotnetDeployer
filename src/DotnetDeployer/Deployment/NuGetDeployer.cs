@@ -18,7 +18,7 @@ public class NuGetDeployer : INuGetDeployer
         this.command = command ?? new Command(Maybe<ILogger>.None);
     }
 
-    public async Task<Result> Deploy(string solutionPath, NuGetConfig config, bool dryRun, ILogger logger)
+    public async Task<Result> Deploy(string solutionPath, NuGetConfig config, string version, bool dryRun, ILogger logger)
     {
         logger.Information("Starting NuGet deployment from {Solution}", solutionPath);
 
@@ -34,7 +34,7 @@ public class NuGetDeployer : INuGetDeployer
 
             // Pack all packable projects
             logger.Debug("Packing NuGet packages...");
-            var packResult = await command.Execute("dotnet", $"pack \"{solutionPath}\" -c Release -o nupkg", solutionDir);
+            var packResult = await command.Execute("dotnet", $"pack \"{solutionPath}\" -c Release -o nupkg /p:Version={version}", solutionDir);
             if (packResult.IsFailure)
             {
                 throw new InvalidOperationException($"Failed to pack: {packResult.Error}");

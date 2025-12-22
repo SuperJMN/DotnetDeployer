@@ -93,6 +93,7 @@ public class DeploymentOrchestrator
                         var nugetResult = await nugetDeployer.Deploy(
                             solutionPath.Value,
                             config.NuGet,
+                            version,
                             options.DryRun,
                             logger);
 

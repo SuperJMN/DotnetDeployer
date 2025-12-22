@@ -67,12 +67,12 @@ public class GitVersionService
     private async Task<Result<string>> RunGitVersion(string workingDirectory, ILogger logger)
     {
         // Run dotnet-gitversion and capture output
-        var result = await command.Execute("dotnet-gitversion", "/showvariable SemVer", workingDirectory);
+        var result = await command.Execute("dotnet-gitversion", "/showvariable MajorMinorPatch", workingDirectory);
 
         if (result.IsFailure)
         {
             // Try alternative: dotnet gitversion (some installations use this)
-            result = await command.Execute("dotnet", "gitversion /showvariable SemVer", workingDirectory);
+            result = await command.Execute("dotnet", "gitversion /showvariable MajorMinorPatch", workingDirectory);
         }
 
         if (result.IsFailure)
