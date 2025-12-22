@@ -24,6 +24,7 @@ public class DeploymentOrchestrator
     private readonly IGitHubReleaseDeployer githubDeployer;
     private readonly IGitHubPagesDeployer githubPagesDeployer;
     private readonly GitVersionService gitVersionService;
+    private readonly ICommand command;
 
     public DeploymentOrchestrator(
         ILogger? logger = null,
@@ -38,6 +39,7 @@ public class DeploymentOrchestrator
     {
         var cmd = command ?? new Command(Maybe.From(logger));
 
+        this.command = cmd;
         this.configReader = configReader ?? new ConfigReader();
         this.metadataExtractor = metadataExtractor ?? new MsbuildMetadataExtractor();
         this.generatorFactory = generatorFactory ?? new PackageGeneratorFactory(cmd);
@@ -71,10 +73,21 @@ public class DeploymentOrchestrator
                     config.GitHub?.Enabled ?? false);
                 logger.Debug("GitHub packages count: {Count}", config.GitHub?.Packages?.Count ?? 0);
 
+                // Restore workloads if needed (android, wasm-tools, etc.)
+                var solutionPath = FindSolution(configDir);
+                if (solutionPath.HasValue)
+                {
+                    logger.Information("Restoring workloads...");
+                    var workloadResult = await command.Execute("dotnet", $"workload restore \"{solutionPath.Value}\"", configDir);
+                    if (workloadResult.IsFailure)
+                    {
+                        logger.Warning("Workload restore failed (may not be needed): {Error}", workloadResult.Error);
+                    }
+                }
+
                 // NuGet deployment
                 if (config.NuGet?.Enabled == true)
                 {
-                    var solutionPath = FindSolution(configDir);
                     if (solutionPath.HasValue)
                     {
                         var nugetResult = await nugetDeployer.Deploy(
