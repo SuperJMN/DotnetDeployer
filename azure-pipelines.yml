@@ -1,0 +1,32 @@
+# Azure Pipelines configuration for DotnetDeployer
+# Self-deployment: the tool deploys its own NuGet packages by running from source
+
+trigger:
+  - master
+  - main
+
+variables:
+  - group: api-keys
+  - name: Agent.Source.Git.ShallowFetchDepth
+    value: 0
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - checkout: self
+    fetchDepth: 0  # Full clone for GitVersion
+
+  # Dry run: Create NuGet packages only (for PRs and non-master/main branches)
+  - pwsh: dotnet run --project src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj -- --dry-run
+    displayName: Create NuGet packages only (dry run)
+    condition: and(succeeded(), not(or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))))
+    env:
+      NUGET_API_KEY: $(NugetApiKey)
+
+  # Create and Publish NuGet packages (for master/main branch only)
+  - pwsh: dotnet run --project src/DotnetDeployer.Tool/DotnetDeployer.Tool.csproj
+    displayName: Create and Publish NuGet packages
+    condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main')))
+    env:
+      NUGET_API_KEY: $(NugetApiKey)

@@ -1,0 +1,9 @@
+# DotnetDeployer Configuration
+# Self-deployment: publishes its own NuGet packages
+
+version: 1
+
+nuget:
+  enabled: true
+  source: https://api.nuget.org/v3/index.json
+  apiKeyEnvVar: NUGET_API_KEY
