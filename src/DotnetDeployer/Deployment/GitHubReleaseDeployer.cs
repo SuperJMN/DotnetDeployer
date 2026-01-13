@@ -24,11 +24,13 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
         return await Result.Try(async () =>
         {
-            var token = Environment.GetEnvironmentVariable(config.TokenEnvVar);
+            var token = !string.IsNullOrEmpty(config.Token)
+                ? config.Token
+                : Environment.GetEnvironmentVariable(config.TokenEnvVar);
 
             if (string.IsNullOrEmpty(token) && !dryRun)
             {
-                throw new InvalidOperationException($"GitHub token not found in environment variable: {config.TokenEnvVar}");
+                throw new InvalidOperationException($"GitHub token not found. Please provide it via 'token' in config or environment variable: {config.TokenEnvVar}");
             }
 
             if (dryRun)

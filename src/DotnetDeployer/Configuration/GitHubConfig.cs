@@ -16,6 +16,9 @@ public class GitHubConfig
     [YamlMember(Alias = "repo")]
     public string Repo { get; set; } = "";
 
+    [YamlMember(Alias = "token")]
+    public string? Token { get; set; }
+
     [YamlMember(Alias = "tokenEnvVar")]
     public string TokenEnvVar { get; set; } = "GITHUB_TOKEN";
 
