@@ -35,10 +35,11 @@ public class AabGenerator : IPackageGenerator
         var projectDir = IOPath.GetDirectoryName(projectPath)!;
 
         // Run dotnet publish for Android with AAB output
-        logger.Debug("Running: dotnet publish -c Release -f net9.0-android -p:AndroidPackageFormat=aab");
+        var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
+        logger.Debug("Running: dotnet publish -c Release -f net9.0-android -p:AndroidPackageFormat=aab {VersionArgs}", versionArgs);
         var publishResult = await command.Execute(
             "dotnet",
-            $"publish \"{projectPath}\" -c Release -f net9.0-android -p:AndroidPackageFormat=aab",
+            $"publish \"{projectPath}\" -c Release -f net9.0-android -p:AndroidPackageFormat=aab {versionArgs}",
             projectDir);
 
         if (publishResult.IsFailure)

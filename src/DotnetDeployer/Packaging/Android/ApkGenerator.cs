@@ -35,10 +35,11 @@ public class ApkGenerator : IPackageGenerator
         var projectDir = IOPath.GetDirectoryName(projectPath)!;
 
         // Run dotnet publish for Android
-        logger.Debug("Running: dotnet publish -c Release -f net9.0-android");
+        var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
+        logger.Debug("Running: dotnet publish -c Release -f net9.0-android {VersionArgs}", versionArgs);
         var publishResult = await command.Execute(
             "dotnet",
-            $"publish \"{projectPath}\" -c Release -f net9.0-android",
+            $"publish \"{projectPath}\" -c Release -f net9.0-android {versionArgs}",
             projectDir);
 
         if (publishResult.IsFailure)
