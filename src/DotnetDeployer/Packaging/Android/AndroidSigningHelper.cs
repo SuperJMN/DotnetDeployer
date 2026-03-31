@@ -1,5 +1,6 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using Serilog;
 
 namespace DotnetDeployer.Packaging.Android;
 
@@ -18,10 +19,16 @@ public sealed class AndroidSigningHelper : IDisposable
         this.keyPassword = keyPassword;
     }
 
-    public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config)
+    public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config, ILogger logger)
     {
+        var unconfigured = Result.Success(new AndroidSigningHelper(null, null, null, null));
+
         if (config is null)
-            return Result.Success(new AndroidSigningHelper(null, null, null, null));
+        {
+            logger.Warning("No signing configuration found. The package will be debug-signed. " +
+                           "Consider adding a 'signing' block in deployer.yaml for consistent release signing");
+            return unconfigured;
+        }
 
         if (string.IsNullOrWhiteSpace(config.KeystoreBase64EnvVar))
             return Result.Failure<AndroidSigningHelper>("Android signing: 'keystoreBase64EnvVar' is required.");
@@ -32,17 +39,23 @@ public sealed class AndroidSigningHelper : IDisposable
         if (string.IsNullOrWhiteSpace(config.KeyPasswordEnvVar))
             return Result.Failure<AndroidSigningHelper>("Android signing: 'keyPasswordEnvVar' is required.");
 
+        var missingVars = new List<string>();
+
         var keystoreBase64 = Environment.GetEnvironmentVariable(config.KeystoreBase64EnvVar);
-        if (string.IsNullOrWhiteSpace(keystoreBase64))
-            return Result.Failure<AndroidSigningHelper>($"Android signing: environment variable '{config.KeystoreBase64EnvVar}' is not set or empty.");
+        if (string.IsNullOrWhiteSpace(keystoreBase64)) missingVars.Add(config.KeystoreBase64EnvVar);
 
         var storePassword = Environment.GetEnvironmentVariable(config.StorePasswordEnvVar);
-        if (string.IsNullOrWhiteSpace(storePassword))
-            return Result.Failure<AndroidSigningHelper>($"Android signing: environment variable '{config.StorePasswordEnvVar}' is not set or empty.");
+        if (string.IsNullOrWhiteSpace(storePassword)) missingVars.Add(config.StorePasswordEnvVar);
 
         var keyPassword = Environment.GetEnvironmentVariable(config.KeyPasswordEnvVar);
-        if (string.IsNullOrWhiteSpace(keyPassword))
-            return Result.Failure<AndroidSigningHelper>($"Android signing: environment variable '{config.KeyPasswordEnvVar}' is not set or empty.");
+        if (string.IsNullOrWhiteSpace(keyPassword)) missingVars.Add(config.KeyPasswordEnvVar);
+
+        if (missingVars.Count > 0)
+        {
+            logger.Warning("Android signing: environment variables not set: {MissingVars}. " +
+                           "The package will be debug-signed", string.Join(", ", missingVars));
+            return unconfigured;
+        }
 
         byte[] keystoreBytes;
         try

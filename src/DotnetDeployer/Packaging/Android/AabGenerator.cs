@@ -37,14 +37,14 @@ public class AabGenerator : IPackageGenerator
 
         var projectDir = IOPath.GetDirectoryName(projectPath)!;
 
-        var signingResult = AndroidSigningHelper.Create(signingConfig);
+        var signingResult = AndroidSigningHelper.Create(signingConfig, logger);
         if (signingResult.IsFailure)
             return Result.Failure<GeneratedPackage>(signingResult.Error);
 
         using var signing = signingResult.Value;
 
         if (signing.IsConfigured)
-            logger.Information("Android signing is configured — AAB will be release-signed");
+            logger.Information("AAB will be release-signed");
 
         // Run dotnet publish for Android with AAB output
         var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
