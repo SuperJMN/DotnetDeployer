@@ -1,4 +1,5 @@
 using CSharpFunctionalExtensions;
+using DotnetDeployer.Configuration;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using Serilog;
@@ -15,10 +16,12 @@ namespace DotnetDeployer.Packaging.Android;
 public class AabGenerator : IPackageGenerator
 {
     private readonly ICommand command;
+    private readonly AndroidSigningConfig? signingConfig;
 
-    public AabGenerator(ICommand? command = null)
+    public AabGenerator(ICommand? command = null, AndroidSigningConfig? signingConfig = null)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
+        this.signingConfig = signingConfig;
     }
 
     public PackageType Type => PackageType.Aab;
@@ -34,12 +37,22 @@ public class AabGenerator : IPackageGenerator
 
         var projectDir = IOPath.GetDirectoryName(projectPath)!;
 
+        var signingResult = AndroidSigningHelper.Create(signingConfig);
+        if (signingResult.IsFailure)
+            return Result.Failure<GeneratedPackage>(signingResult.Error);
+
+        using var signing = signingResult.Value;
+
+        if (signing.IsConfigured)
+            logger.Information("Android signing is configured — AAB will be release-signed");
+
         // Run dotnet publish for Android with AAB output
         var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
-        logger.Debug("Running: dotnet publish -c Release -f net9.0-android -p:AndroidPackageFormat=aab {VersionArgs}", versionArgs);
+        var signingArgs = signing.GetSigningArgs();
+        logger.Debug("Running: dotnet publish -c Release -f net9.0-android -p:AndroidPackageFormat=aab {VersionArgs} {SigningArgs}", versionArgs, signingArgs);
         var publishResult = await command.Execute(
             "dotnet",
-            $"publish \"{projectPath}\" -c Release -f net9.0-android -p:AndroidPackageFormat=aab {versionArgs}",
+            $"publish \"{projectPath}\" -c Release -f net9.0-android -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}",
             projectDir);
 
         if (publishResult.IsFailure)

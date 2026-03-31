@@ -1,4 +1,5 @@
 using CSharpFunctionalExtensions;
+using DotnetDeployer.Configuration;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Packaging.Android;
 using DotnetDeployer.Packaging.Linux;
@@ -16,10 +17,11 @@ namespace DotnetDeployer.Packaging;
 public class PackageGeneratorFactory
 {
     private readonly Dictionary<PackageType, IPackageGenerator> generators;
+    private readonly ICommand cmd;
 
     public PackageGeneratorFactory(ICommand? command = null)
     {
-        var cmd = command ?? new Command(Maybe<ILogger>.None);
+        cmd = command ?? new Command(Maybe<ILogger>.None);
 
         generators = new Dictionary<PackageType, IPackageGenerator>
         {
@@ -51,6 +53,23 @@ public class PackageGeneratorFactory
         }
 
         return generator;
+    }
+
+    public IPackageGenerator GetGenerator(PackageFormatConfig formatConfig)
+    {
+        var type = formatConfig.GetPackageType();
+
+        if (formatConfig.Signing is not null)
+        {
+            return type switch
+            {
+                PackageType.Apk => new ApkGenerator(cmd, formatConfig.Signing),
+                PackageType.Aab => new AabGenerator(cmd, formatConfig.Signing),
+                _ => throw new ArgumentException($"Signing configuration is only supported for Android package types (Apk, Aab), not '{type}'.")
+            };
+        }
+
+        return GetGenerator(type);
     }
 
     public IEnumerable<PackageType> SupportedTypes => generators.Keys;
