@@ -227,7 +227,7 @@ public class DeploymentOrchestrator
                 foreach (var formatConfig in projectConfig.Formats)
                 {
                     var packageType = formatConfig.GetPackageType();
-                    var generator = generatorFactory.GetGenerator(packageType);
+                    var generator = generatorFactory.GetGenerator(formatConfig);
 
                     foreach (var arch in formatConfig.GetArchitectures())
                     {

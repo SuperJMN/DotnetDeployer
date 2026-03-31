@@ -14,6 +14,9 @@ public class PackageFormatConfig
     [YamlMember(Alias = "arch")]
     public List<string>? Arch { get; set; }
 
+    [YamlMember(Alias = "signing")]
+    public AndroidSigningConfig? Signing { get; set; }
+
     public PackageType GetPackageType()
     {
         return Type.ToLowerInvariant() switch
