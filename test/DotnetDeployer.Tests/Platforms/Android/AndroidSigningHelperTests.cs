@@ -1,11 +1,24 @@
 using DotnetDeployer.Configuration;
 using DotnetDeployer.Packaging.Android;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 
 namespace DotnetDeployer.Tests.Platforms.Android;
 
 public class AndroidSigningHelperTests : IDisposable
 {
     private readonly List<string> envVarsToClean = [];
+    private readonly CapturingSink sink = new();
+    private readonly ILogger logger;
+
+    public AndroidSigningHelperTests()
+    {
+        logger = new LoggerConfiguration()
+            .MinimumLevel.Verbose()
+            .WriteTo.Sink(sink)
+            .CreateLogger();
+    }
 
     public void Dispose()
     {
@@ -32,13 +45,14 @@ public class AndroidSigningHelperTests : IDisposable
     };
 
     [Fact]
-    public void NullConfig_ReturnsSuccess_WithNoSigningArgs()
+    public void NullConfig_ReturnsSuccess_NotConfigured_WithWarning()
     {
-        var result = AndroidSigningHelper.Create(null);
+        var result = AndroidSigningHelper.Create(null, logger);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.IsConfigured);
         Assert.Equal("", result.Value.GetSigningArgs());
+        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("No signing configuration"));
         result.Value.Dispose();
     }
 
@@ -50,7 +64,7 @@ public class AndroidSigningHelperTests : IDisposable
         SetEnvVar("TEST_KS_PASS", "storepass123");
         SetEnvVar("TEST_KEY_PASS", "keypass456");
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
         Assert.True(result.IsSuccess);
         using var helper = result.Value;
@@ -62,45 +76,64 @@ public class AndroidSigningHelperTests : IDisposable
         Assert.Contains("-p:AndroidSigningStorePass=storepass123", args);
         Assert.Contains("-p:AndroidSigningKeyPass=keypass456", args);
         Assert.Contains("-p:AndroidSigningKeyStore=", args);
+        Assert.DoesNotContain(sink.Events, e => e.Level == LogEventLevel.Warning);
     }
 
     [Fact]
-    public void MissingKeystoreEnvVar_ReturnsFailure()
+    public void MissingKeystoreEnvVar_ReturnsSuccess_NotConfigured_WithWarning()
     {
         SetEnvVar("TEST_KS_PASS", "pass");
         SetEnvVar("TEST_KEY_PASS", "pass");
-        // TEST_KS_BASE64 not set
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
-        Assert.True(result.IsFailure);
-        Assert.Contains("TEST_KS_BASE64", result.Error);
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.IsConfigured);
+        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("TEST_KS_BASE64"));
+        result.Value.Dispose();
     }
 
     [Fact]
-    public void MissingStorePasswordEnvVar_ReturnsFailure()
+    public void MissingStorePasswordEnvVar_ReturnsSuccess_NotConfigured_WithWarning()
     {
         SetEnvVar("TEST_KS_BASE64", Convert.ToBase64String([0x01]));
         SetEnvVar("TEST_KEY_PASS", "pass");
-        // TEST_KS_PASS not set
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
-        Assert.True(result.IsFailure);
-        Assert.Contains("TEST_KS_PASS", result.Error);
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.IsConfigured);
+        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("TEST_KS_PASS"));
+        result.Value.Dispose();
     }
 
     [Fact]
-    public void MissingKeyPasswordEnvVar_ReturnsFailure()
+    public void MissingKeyPasswordEnvVar_ReturnsSuccess_NotConfigured_WithWarning()
     {
         SetEnvVar("TEST_KS_BASE64", Convert.ToBase64String([0x01]));
         SetEnvVar("TEST_KS_PASS", "pass");
-        // TEST_KEY_PASS not set
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
-        Assert.True(result.IsFailure);
-        Assert.Contains("TEST_KEY_PASS", result.Error);
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.IsConfigured);
+        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("TEST_KEY_PASS"));
+        result.Value.Dispose();
+    }
+
+    [Fact]
+    public void MissingMultipleEnvVars_WarningListsAllMissing()
+    {
+        // No env vars set at all
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.IsConfigured);
+        var warning = sink.Events.Single(e => e.Level == LogEventLevel.Warning).RenderMessage();
+        Assert.Contains("TEST_KS_BASE64", warning);
+        Assert.Contains("TEST_KS_PASS", warning);
+        Assert.Contains("TEST_KEY_PASS", warning);
+        result.Value.Dispose();
     }
 
     [Fact]
@@ -110,7 +143,7 @@ public class AndroidSigningHelperTests : IDisposable
         SetEnvVar("TEST_KS_PASS", "pass");
         SetEnvVar("TEST_KEY_PASS", "pass");
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
         Assert.True(result.IsFailure);
         Assert.Contains("valid base64", result.Error);
@@ -123,7 +156,7 @@ public class AndroidSigningHelperTests : IDisposable
         SetEnvVar("TEST_KS_PASS", "pass");
         SetEnvVar("TEST_KEY_PASS", "pass");
 
-        var result = AndroidSigningHelper.Create(MakeConfig());
+        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
         Assert.True(result.IsSuccess);
 
         var args = result.Value.GetSigningArgs();
@@ -147,7 +180,7 @@ public class AndroidSigningHelperTests : IDisposable
             StorePasswordEnvVar = spEnv,
             KeyAlias = alias,
             KeyPasswordEnvVar = kpEnv
-        });
+        }, logger);
 
         Assert.True(result.IsFailure);
         Assert.Contains(fieldName, result.Error);
@@ -159,5 +192,11 @@ public class AndroidSigningHelperTests : IDisposable
         var start = args.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
         var end = args.IndexOf('"', start);
         return args[start..end];
+    }
+
+    private class CapturingSink : ILogEventSink
+    {
+        public List<LogEvent> Events { get; } = [];
+        public void Emit(LogEvent logEvent) => Events.Add(logEvent);
     }
 }
