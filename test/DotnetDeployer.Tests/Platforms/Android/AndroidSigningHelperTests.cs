@@ -1,4 +1,5 @@
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Signing;
 using DotnetDeployer.Packaging.Android;
 using Serilog;
 using Serilog.Core;
@@ -33,12 +34,17 @@ public class AndroidSigningHelperTests : IDisposable
     }
 
     private static AndroidSigningConfig MakeConfig(
-        string keystoreEnvVar = "TEST_KS_BASE64",
+        string envVarName = "TEST_KS_BASE64",
         string storePassEnvVar = "TEST_KS_PASS",
         string keyAlias = "test-key",
         string keyPassEnvVar = "TEST_KEY_PASS") => new()
     {
-        KeystoreBase64EnvVar = keystoreEnvVar,
+        Keystore = new KeystoreSourceConfig
+        {
+            From = "env",
+            Name = envVarName,
+            Encoding = "base64"
+        },
         StorePasswordEnvVar = storePassEnvVar,
         KeyAlias = keyAlias,
         KeyPasswordEnvVar = keyPassEnvVar
@@ -53,6 +59,24 @@ public class AndroidSigningHelperTests : IDisposable
         Assert.False(result.Value.IsConfigured);
         Assert.Equal("", result.Value.GetSigningArgs());
         Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("No signing configuration"));
+        result.Value.Dispose();
+    }
+
+    [Fact]
+    public void ConfigWithoutKeystoreBlock_ReturnsSuccess_NotConfigured_WithWarning()
+    {
+        var config = new AndroidSigningConfig
+        {
+            StorePasswordEnvVar = "SP",
+            KeyAlias = "alias",
+            KeyPasswordEnvVar = "KP"
+        };
+
+        var result = AndroidSigningHelper.Create(config, logger);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.IsConfigured);
+        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning);
         result.Value.Dispose();
     }
 
@@ -76,21 +100,18 @@ public class AndroidSigningHelperTests : IDisposable
         Assert.Contains("-p:AndroidSigningStorePass=storepass123", args);
         Assert.Contains("-p:AndroidSigningKeyPass=keypass456", args);
         Assert.Contains("-p:AndroidSigningKeyStore=", args);
-        Assert.DoesNotContain(sink.Events, e => e.Level == LogEventLevel.Warning);
     }
 
     [Fact]
-    public void MissingKeystoreEnvVar_ReturnsSuccess_NotConfigured_WithWarning()
+    public void MissingKeystoreEnvVar_ReturnsFailure()
     {
         SetEnvVar("TEST_KS_PASS", "pass");
         SetEnvVar("TEST_KEY_PASS", "pass");
 
         var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
-        Assert.True(result.IsSuccess);
-        Assert.False(result.Value.IsConfigured);
-        Assert.Contains(sink.Events, e => e.Level == LogEventLevel.Warning && e.RenderMessage().Contains("TEST_KS_BASE64"));
-        result.Value.Dispose();
+        Assert.True(result.IsFailure);
+        Assert.Contains("TEST_KS_BASE64", result.Error);
     }
 
     [Fact]
@@ -122,21 +143,6 @@ public class AndroidSigningHelperTests : IDisposable
     }
 
     [Fact]
-    public void MissingMultipleEnvVars_WarningListsAllMissing()
-    {
-        // No env vars set at all
-        var result = AndroidSigningHelper.Create(MakeConfig(), logger);
-
-        Assert.True(result.IsSuccess);
-        Assert.False(result.Value.IsConfigured);
-        var warning = sink.Events.Single(e => e.Level == LogEventLevel.Warning).RenderMessage();
-        Assert.Contains("TEST_KS_BASE64", warning);
-        Assert.Contains("TEST_KS_PASS", warning);
-        Assert.Contains("TEST_KEY_PASS", warning);
-        result.Value.Dispose();
-    }
-
-    [Fact]
     public void InvalidBase64_ReturnsFailure()
     {
         SetEnvVar("TEST_KS_BASE64", "!!!not-valid-base64!!!");
@@ -146,7 +152,7 @@ public class AndroidSigningHelperTests : IDisposable
         var result = AndroidSigningHelper.Create(MakeConfig(), logger);
 
         Assert.True(result.IsFailure);
-        Assert.Contains("valid base64", result.Error);
+        Assert.Contains("Invalid base64", result.Error);
     }
 
     [Fact]
@@ -168,15 +174,21 @@ public class AndroidSigningHelperTests : IDisposable
     }
 
     [Theory]
-    [InlineData("keystoreBase64EnvVar", "", "TEST_KS_PASS", "key", "TEST_KEY_PASS")]
-    [InlineData("storePasswordEnvVar", "TEST_KS_BASE64", "", "key", "TEST_KEY_PASS")]
-    [InlineData("keyAlias", "TEST_KS_BASE64", "TEST_KS_PASS", "", "TEST_KEY_PASS")]
-    [InlineData("keyPasswordEnvVar", "TEST_KS_BASE64", "TEST_KS_PASS", "key", "")]
-    public void EmptyConfigField_ReturnsFailure(string fieldName, string ksEnv, string spEnv, string alias, string kpEnv)
+    [InlineData("storePasswordEnvVar", "", "key", "TEST_KEY_PASS")]
+    [InlineData("keyAlias", "TEST_KS_PASS", "", "TEST_KEY_PASS")]
+    [InlineData("keyPasswordEnvVar", "TEST_KS_PASS", "key", "")]
+    public void EmptyConfigField_ReturnsFailure(string fieldName, string spEnv, string alias, string kpEnv)
     {
+        SetEnvVar("TEST_KS_BASE64", Convert.ToBase64String([0x01]));
+
         var result = AndroidSigningHelper.Create(new AndroidSigningConfig
         {
-            KeystoreBase64EnvVar = ksEnv,
+            Keystore = new KeystoreSourceConfig
+            {
+                From = "env",
+                Name = "TEST_KS_BASE64",
+                Encoding = "base64"
+            },
             StorePasswordEnvVar = spEnv,
             KeyAlias = alias,
             KeyPasswordEnvVar = kpEnv
@@ -192,66 +204,6 @@ public class AndroidSigningHelperTests : IDisposable
         var start = args.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
         var end = args.IndexOf('"', start);
         return args[start..end];
-    }
-
-    [Fact]
-    public void ExpandedKeystoreConfig_FromEnv_ResolvesCorrectly()
-    {
-        var fakeKeystore = Convert.ToBase64String([0xDE, 0xAD, 0xBE, 0xEF]);
-        SetEnvVar("ANDROID_KEYSTORE_BASE64", fakeKeystore);
-        SetEnvVar("ANDROID_STORE_PASS", "storepass");
-        SetEnvVar("ANDROID_KEY_PASS", "keypass");
-
-        var config = new AndroidSigningConfig
-        {
-            Keystore = new DotnetDeployer.Configuration.Signing.KeystoreSourceConfig
-            {
-                From = "env",
-                Name = "ANDROID_KEYSTORE_BASE64",
-                Encoding = "base64"
-            },
-            StorePasswordEnvVar = "ANDROID_STORE_PASS",
-            KeyAlias = "release-key",
-            KeyPasswordEnvVar = "ANDROID_KEY_PASS"
-        };
-
-        var result = AndroidSigningHelper.Create(config, logger);
-
-        Assert.True(result.IsSuccess);
-        using var helper = result.Value;
-        Assert.True(helper.IsConfigured);
-
-        var args = helper.GetSigningArgs();
-        Assert.Contains("-p:AndroidKeyStore=true", args);
-        Assert.Contains("-p:AndroidSigningKeyAlias=release-key", args);
-        Assert.Contains("-p:AndroidSigningStorePass=storepass", args);
-        Assert.Contains("-p:AndroidSigningKeyPass=keypass", args);
-    }
-
-    [Fact]
-    public void ExpandedKeystoreConfig_MissingEnvVar_FallsBackToUnconfigured()
-    {
-        SetEnvVar("ANDROID_STORE_PASS", "storepass");
-        SetEnvVar("ANDROID_KEY_PASS", "keypass");
-        // ANDROID_KEYSTORE_BASE64 intentionally NOT set
-
-        var config = new AndroidSigningConfig
-        {
-            Keystore = new DotnetDeployer.Configuration.Signing.KeystoreSourceConfig
-            {
-                From = "env",
-                Name = "ANDROID_KEYSTORE_BASE64",
-                Encoding = "base64"
-            },
-            StorePasswordEnvVar = "ANDROID_STORE_PASS",
-            KeyAlias = "release-key",
-            KeyPasswordEnvVar = "ANDROID_KEY_PASS"
-        };
-
-        var result = AndroidSigningHelper.Create(config, logger);
-
-        Assert.True(result.IsFailure);
-        Assert.Contains("ANDROID_KEYSTORE_BASE64", result.Error);
     }
 
     private class CapturingSink : ILogEventSink
