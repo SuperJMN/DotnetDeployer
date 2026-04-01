@@ -194,6 +194,66 @@ public class AndroidSigningHelperTests : IDisposable
         return args[start..end];
     }
 
+    [Fact]
+    public void ExpandedKeystoreConfig_FromEnv_ResolvesCorrectly()
+    {
+        var fakeKeystore = Convert.ToBase64String([0xDE, 0xAD, 0xBE, 0xEF]);
+        SetEnvVar("ANDROID_KEYSTORE_BASE64", fakeKeystore);
+        SetEnvVar("ANDROID_STORE_PASS", "storepass");
+        SetEnvVar("ANDROID_KEY_PASS", "keypass");
+
+        var config = new AndroidSigningConfig
+        {
+            Keystore = new DotnetDeployer.Configuration.Signing.KeystoreSourceConfig
+            {
+                From = "env",
+                Name = "ANDROID_KEYSTORE_BASE64",
+                Encoding = "base64"
+            },
+            StorePasswordEnvVar = "ANDROID_STORE_PASS",
+            KeyAlias = "release-key",
+            KeyPasswordEnvVar = "ANDROID_KEY_PASS"
+        };
+
+        var result = AndroidSigningHelper.Create(config, logger);
+
+        Assert.True(result.IsSuccess);
+        using var helper = result.Value;
+        Assert.True(helper.IsConfigured);
+
+        var args = helper.GetSigningArgs();
+        Assert.Contains("-p:AndroidKeyStore=true", args);
+        Assert.Contains("-p:AndroidSigningKeyAlias=release-key", args);
+        Assert.Contains("-p:AndroidSigningStorePass=storepass", args);
+        Assert.Contains("-p:AndroidSigningKeyPass=keypass", args);
+    }
+
+    [Fact]
+    public void ExpandedKeystoreConfig_MissingEnvVar_FallsBackToUnconfigured()
+    {
+        SetEnvVar("ANDROID_STORE_PASS", "storepass");
+        SetEnvVar("ANDROID_KEY_PASS", "keypass");
+        // ANDROID_KEYSTORE_BASE64 intentionally NOT set
+
+        var config = new AndroidSigningConfig
+        {
+            Keystore = new DotnetDeployer.Configuration.Signing.KeystoreSourceConfig
+            {
+                From = "env",
+                Name = "ANDROID_KEYSTORE_BASE64",
+                Encoding = "base64"
+            },
+            StorePasswordEnvVar = "ANDROID_STORE_PASS",
+            KeyAlias = "release-key",
+            KeyPasswordEnvVar = "ANDROID_KEY_PASS"
+        };
+
+        var result = AndroidSigningHelper.Create(config, logger);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains("ANDROID_KEYSTORE_BASE64", result.Error);
+    }
+
     private class CapturingSink : ILogEventSink
     {
         public List<LogEvent> Events { get; } = [];

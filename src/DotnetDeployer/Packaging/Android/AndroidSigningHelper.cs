@@ -1,5 +1,6 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Secrets;
 using DotnetDeployer.Configuration.Signing;
 using Serilog;
 
@@ -56,6 +57,7 @@ public sealed class AndroidSigningHelper : IDisposable
 
     /// <summary>
     /// Legacy: creates from the old <see cref="AndroidSigningConfig"/> that uses keystoreBase64EnvVar.
+    /// Also handles the new expanded keystore block if present.
     /// </summary>
     public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config, ILogger logger)
     {
@@ -64,6 +66,19 @@ public sealed class AndroidSigningHelper : IDisposable
             logger.Warning("No signing configuration found. The package will be debug-signed. " +
                            "Consider adding a 'signing' block in deployer.yaml for consistent release signing");
             return Result.Success(Unconfigured());
+        }
+
+        // New expanded keystore block takes precedence
+        if (config.Keystore is not null)
+        {
+            return config.Keystore.ToKeystoreSource()
+                .Bind(source =>
+                {
+                    var secretsReader = new SecretsReader();
+                    var resolver = new KeystoreSourceResolver(secretsReader);
+                    return resolver.Resolve(source);
+                })
+                .Bind(resolved => Create(resolved, config, logger));
         }
 
         if (string.IsNullOrWhiteSpace(config.KeystoreBase64EnvVar))
