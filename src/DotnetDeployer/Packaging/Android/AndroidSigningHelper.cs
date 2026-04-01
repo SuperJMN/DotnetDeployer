@@ -1,5 +1,6 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Signing;
 using Serilog;
 
 namespace DotnetDeployer.Packaging.Android;
@@ -19,15 +20,50 @@ public sealed class AndroidSigningHelper : IDisposable
         this.keyPassword = keyPassword;
     }
 
+    /// <summary>
+    /// Creates an <see cref="AndroidSigningHelper"/> from a resolved keystore and signing config.
+    /// This is the preferred path when using the expanded keystore source configuration.
+    /// </summary>
+    public static Result<AndroidSigningHelper> Create(ResolvedKeystore keystore, AndroidSigningConfig config, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(config.StorePasswordEnvVar))
+            return Result.Failure<AndroidSigningHelper>("Android signing: 'storePasswordEnvVar' is required.");
+        if (string.IsNullOrWhiteSpace(config.KeyAlias))
+            return Result.Failure<AndroidSigningHelper>("Android signing: 'keyAlias' is required.");
+        if (string.IsNullOrWhiteSpace(config.KeyPasswordEnvVar))
+            return Result.Failure<AndroidSigningHelper>("Android signing: 'keyPasswordEnvVar' is required.");
+
+        var missingVars = new List<string>();
+
+        var storePassword = Environment.GetEnvironmentVariable(config.StorePasswordEnvVar);
+        if (string.IsNullOrWhiteSpace(storePassword)) missingVars.Add(config.StorePasswordEnvVar);
+
+        var keyPassword = Environment.GetEnvironmentVariable(config.KeyPasswordEnvVar);
+        if (string.IsNullOrWhiteSpace(keyPassword)) missingVars.Add(config.KeyPasswordEnvVar);
+
+        if (missingVars.Count > 0)
+        {
+            logger.Warning("Android signing: environment variables not set: {MissingVars}. " +
+                           "The package will be debug-signed", string.Join(", ", missingVars));
+            return Result.Success(Unconfigured());
+        }
+
+        var tempPath = Path.Combine(Path.GetTempPath(), $"deployer-keystore-{Guid.NewGuid():N}.keystore");
+        File.WriteAllBytes(tempPath, keystore.Bytes);
+
+        return Result.Success(new AndroidSigningHelper(tempPath, config.KeyAlias, storePassword, keyPassword));
+    }
+
+    /// <summary>
+    /// Legacy: creates from the old <see cref="AndroidSigningConfig"/> that uses keystoreBase64EnvVar.
+    /// </summary>
     public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config, ILogger logger)
     {
-        var unconfigured = Result.Success(new AndroidSigningHelper(null, null, null, null));
-
         if (config is null)
         {
             logger.Warning("No signing configuration found. The package will be debug-signed. " +
                            "Consider adding a 'signing' block in deployer.yaml for consistent release signing");
-            return unconfigured;
+            return Result.Success(Unconfigured());
         }
 
         if (string.IsNullOrWhiteSpace(config.KeystoreBase64EnvVar))
@@ -54,13 +90,13 @@ public sealed class AndroidSigningHelper : IDisposable
         {
             logger.Warning("Android signing: environment variables not set: {MissingVars}. " +
                            "The package will be debug-signed", string.Join(", ", missingVars));
-            return unconfigured;
+            return Result.Success(Unconfigured());
         }
 
         byte[] keystoreBytes;
         try
         {
-            keystoreBytes = Convert.FromBase64String(keystoreBase64);
+            keystoreBytes = Convert.FromBase64String(keystoreBase64!);
         }
         catch (FormatException)
         {
@@ -90,4 +126,6 @@ public sealed class AndroidSigningHelper : IDisposable
             catch { /* best-effort cleanup */ }
         }
     }
+
+    private static AndroidSigningHelper Unconfigured() => new(null, null, null, null);
 }

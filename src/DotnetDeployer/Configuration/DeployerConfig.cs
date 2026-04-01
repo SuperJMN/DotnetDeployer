@@ -18,4 +18,7 @@ public class DeployerConfig
 
     [YamlMember(Alias = "githubPages")]
     public GitHubPagesConfig? GitHubPages { get; set; }
+
+    [YamlMember(Alias = "android")]
+    public AndroidConfig? Android { get; set; }
 }
