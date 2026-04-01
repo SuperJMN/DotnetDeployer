@@ -70,4 +70,31 @@ public class AndroidSigningConfigTests
         Assert.Equal(original.KeyAlias, deserialized.KeyAlias);
         Assert.Equal(original.KeyPasswordEnvVar, deserialized.KeyPasswordEnvVar);
     }
+
+    [Fact]
+    public void Deserialize_WithExpandedKeystoreBlock_ParsesCorrectly()
+    {
+        const string yaml = """
+            type: Apk
+            arch:
+              - arm64
+            signing:
+              keystore:
+                from: env
+                name: ANDROID_KEYSTORE_BASE64
+                encoding: base64
+              storePasswordEnvVar: MY_SP
+              keyAlias: release-key
+              keyPasswordEnvVar: MY_KP
+            """;
+
+        var config = Deserializer.Deserialize<PackageFormatConfig>(yaml);
+
+        Assert.NotNull(config.Signing);
+        Assert.NotNull(config.Signing!.Keystore);
+        Assert.Equal("env", config.Signing.Keystore!.From);
+        Assert.Equal("ANDROID_KEYSTORE_BASE64", config.Signing.Keystore.Name);
+        Assert.Equal("base64", config.Signing.Keystore.Encoding);
+        Assert.Null(config.Signing.KeystoreBase64EnvVar);
+    }
 }
