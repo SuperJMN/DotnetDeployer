@@ -90,6 +90,16 @@ githubPages:
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
 | `githubPages` | `customDomain` | Optional custom domain for the site |
+| `android` | `signing` | Top-level Android signing configuration |
+| `android.signing` | `keystore` | Keystore source block (see below) |
+| `android.signing.keystore` | `from` | Source type: `file`, `env`, `secret` |
+| `android.signing.keystore` | `path` | File path (when `from: file`) |
+| `android.signing.keystore` | `name` | Env var name (when `from: env`) |
+| `android.signing.keystore` | `key` | Secret key name (when `from: secret`) |
+| `android.signing.keystore` | `encoding` | Encoding: `raw`, `base64` |
+| `android.signing` | `storePasswordEnvVar` | Env var with keystore store password |
+| `android.signing` | `keyAlias` | Key alias for signing |
+| `android.signing` | `keyPasswordEnvVar` | Env var with key password |
 
 ---
 
@@ -125,6 +135,9 @@ steps:
     env:
       NUGET_API_KEY: $(NugetApiKey)
       GITHUB_TOKEN: $(GitHubToken)
+      ANDROID_KEYSTORE_BASE64: $(AndroidKeystoreBase64)
+      ANDROID_STORE_PASS: $(AndroidStorePass)
+      ANDROID_KEY_PASS: $(AndroidKeyPass)
 
   # Actual deployment for master/main branch
   - pwsh: |
@@ -135,6 +148,9 @@ steps:
     env:
       NUGET_API_KEY: $(NugetApiKey)
       GITHUB_TOKEN: $(GitHubToken)
+      ANDROID_KEYSTORE_BASE64: $(AndroidKeystoreBase64)
+      ANDROID_STORE_PASS: $(AndroidStorePass)
+      ANDROID_KEY_PASS: $(AndroidKeyPass)
 ```
 
 ### Key Points
@@ -196,6 +212,11 @@ In Azure DevOps, create a variable group named `api-keys` with:
 |----------|-------------|---------|
 | `NugetApiKey` | NuGet.org API key | Yes |
 | `GitHubToken` | GitHub Personal Access Token with `repo` scope | Yes |
+| `AndroidKeystoreBase64` | Android keystore file encoded in base64 | Yes |
+| `AndroidStorePass` | Android keystore store password | Yes |
+| `AndroidKeyPass` | Android signing key password | Yes |
+
+Only define the variables needed for your configuration. NuGet-only projects only need `NugetApiKey`.
 
 ---
 
@@ -243,6 +264,50 @@ github:
           arch: [x64, arm64]
 ```
 
+### Desktop + Android App (with signing)
+
+```yaml
+version: 1
+
+github:
+  enabled: true
+  owner: MyOrg
+  repo: MyApp
+  tokenEnvVar: GITHUB_TOKEN
+  outputDir: artifacts
+  packages:
+    - project: src/MyApp.Desktop/MyApp.Desktop.csproj
+      formats:
+        - type: appimage
+          arch: [x64, arm64]
+        - type: exe-sfx
+          arch: [x64]
+        - type: exe-setup
+          arch: [x64]
+    - project: src/MyApp.Android/MyApp.Android.csproj
+      formats:
+        - type: apk
+          arch: [x64]
+          signing:
+            keystore:
+              from: env
+              name: ANDROID_KEYSTORE_BASE64
+              encoding: base64
+            storePasswordEnvVar: ANDROID_STORE_PASS
+            keyAlias: release-key
+            keyPasswordEnvVar: ANDROID_KEY_PASS
+
+android:
+  signing:
+    keystore:
+      from: env
+      name: ANDROID_KEYSTORE_BASE64
+      encoding: base64
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
 ### WebAssembly App to GitHub Pages
 
 ```yaml
@@ -259,6 +324,70 @@ githubPages:
 
 ---
 
+## Android Keystore Configuration
+
+The keystore can come from three sources. Use the expanded syntax for explicit, maintainable configuration.
+
+### File source
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: file
+      path: ./android/release.keystore
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+### Environment variable (base64)
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: env
+      name: ANDROID_KEYSTORE_BASE64
+      encoding: base64
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+### Secrets file (base64)
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: secret
+      key: android_keystore_base64
+      encoding: base64
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+The secrets file (`deployer.secrets.yaml`) is a flat YAML file in the repo root:
+
+```yaml
+android_keystore_base64: <base64-encoded-keystore>
+android_key_alias: myalias
+android_key_pass: secretpassword
+android_store_pass: secretpassword
+```
+
+**Important**: Add `deployer.secrets.yaml` to `.gitignore`.
+
+To encode a keystore as base64:
+
+```bash
+base64 -w 0 < your-release.keystore
+```
+
+---
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -267,3 +396,6 @@ githubPages:
 | GitVersion not found | Tool auto-installs, but ensure .NET SDK 8.0+ is available |
 | NuGet push fails | Check `NUGET_API_KEY` is set correctly in variable group |
 | GitHub release fails | Ensure `GITHUB_TOKEN` has `repo` scope |
+| Android keystore invalid base64 | Re-encode with `base64 -w 0 < your.keystore` |
+| Android signing env var missing | Check all `ANDROID_*` vars are mapped in pipeline `env:` block |
+| Secret key not found | Ensure `deployer.secrets.yaml` exists and contains the key |

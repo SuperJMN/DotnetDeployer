@@ -156,3 +156,91 @@ The tool automatically outputs `##vso[build.updatebuildnumber]` to set the build
 | Windows | EXE (self-extracting), EXE (setup wizard), MSIX |
 | macOS | DMG |
 | Android | APK, AAB |
+
+---
+
+## Android Keystore Configuration
+
+Android packages (APK/AAB) can be release-signed. DotnetDeployer supports three keystore sources with an explicit, expanded YAML syntax.
+
+### Source 1: Physical file
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: file
+      path: ./android/release.keystore
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+### Source 2: Environment variable (base64)
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: env
+      name: ANDROID_KEYSTORE_BASE64
+      encoding: base64
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+### Source 3: Secrets file (base64)
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: secret
+      key: android_keystore_base64
+      encoding: base64
+    storePasswordEnvVar: ANDROID_STORE_PASS
+    keyAlias: release-key
+    keyPasswordEnvVar: ANDROID_KEY_PASS
+```
+
+With a `deployer.secrets.yaml` in the repo root (add to `.gitignore`):
+
+```yaml
+android_keystore_base64: <base64-encoded-keystore-content>
+```
+
+### Encoding your keystore
+
+```bash
+base64 -w 0 < your-release.keystore
+```
+
+### Keystore source reference
+
+| Property | `from: file` | `from: env` | `from: secret` |
+|----------|:---:|:---:|:---:|
+| `path` | ✅ Required | — | — |
+| `name` | — | ✅ Required | — |
+| `key` | — | — | ✅ Required |
+| `encoding` | — | `base64` | `base64` |
+
+### Per-format signing (alternative)
+
+You can also configure signing per package format instead of at the top level:
+
+```yaml
+github:
+  packages:
+    - project: src/MyApp.Android/MyApp.Android.csproj
+      formats:
+        - type: apk
+          signing:
+            keystore:
+              from: env
+              name: ANDROID_KEYSTORE_BASE64
+              encoding: base64
+            storePasswordEnvVar: ANDROID_STORE_PASS
+            keyAlias: release-key
+            keyPasswordEnvVar: ANDROID_KEY_PASS
+```
