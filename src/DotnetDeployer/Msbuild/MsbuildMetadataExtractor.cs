@@ -15,6 +15,8 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
     private static readonly string[] PropertiesToExtract =
     [
         "AssemblyName",
+        "TargetFramework",
+        "TargetFrameworks",
         "Version",
         "Authors",
         "Description",
@@ -62,6 +64,11 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
             {
                 ProjectPath = projectPath,
                 AssemblyName = assemblyName,
+                TargetFramework = properties.GetValueOrDefault("TargetFramework"),
+                TargetFrameworks = properties.GetValueOrDefault("TargetFrameworks"),
+                AndroidTargetFramework = ResolveAndroidTargetFramework(
+                    properties.GetValueOrDefault("TargetFramework"),
+                    properties.GetValueOrDefault("TargetFrameworks")),
                 Version = properties.GetValueOrDefault("Version"),
                 Authors = properties.GetValueOrDefault("Authors"),
                 Description = properties.GetValueOrDefault("Description"),
@@ -74,6 +81,15 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
                 RepositoryUrl = properties.GetValueOrDefault("RepositoryUrl")
             };
         });
+    }
+
+    private static string? ResolveAndroidTargetFramework(string? targetFramework, string? targetFrameworks)
+    {
+        var candidates = new[] { targetFramework, targetFrameworks }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value => value!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        return candidates.FirstOrDefault(candidate => candidate.Contains("-android", StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<string?> GetProperty(string projectPath, string propertyName)

@@ -46,13 +46,15 @@ public class AabGenerator : IPackageGenerator
         if (signing.IsConfigured)
             logger.Information("AAB will be release-signed");
 
+        var targetFramework = metadata.AndroidTargetFramework ?? "net9.0-android";
+
         // Run dotnet publish for Android with AAB output
         var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
         var signingArgs = signing.GetSigningArgs();
-        logger.Debug("Running: dotnet publish -c Release -f net9.0-android -p:AndroidPackageFormat=aab {VersionArgs} {SigningArgs}", versionArgs, signingArgs);
+        logger.Debug("Running: dotnet publish -c Release -f {TargetFramework} -p:AndroidPackageFormat=aab {VersionArgs} {SigningArgs}", targetFramework, versionArgs, signingArgs);
         var publishResult = await command.Execute(
             "dotnet",
-            $"publish \"{projectPath}\" -c Release -f net9.0-android -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}",
+            $"publish \"{projectPath}\" -c Release -f {targetFramework} -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}",
             projectDir);
 
         if (publishResult.IsFailure)
@@ -65,8 +67,8 @@ public class AabGenerator : IPackageGenerator
         // Search for AAB in multiple possible locations
         var searchDirs = new[]
         {
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-android", "publish"),
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-android"),
+            IOPath.Combine(projectDir, "bin", "Release", targetFramework, "publish"),
+            IOPath.Combine(projectDir, "bin", "Release", targetFramework),
             IOPath.Combine(projectDir, "bin", "Release")
         };
 
