@@ -9,6 +9,9 @@ public record ProjectMetadata
 {
     public required string ProjectPath { get; init; }
     public required string AssemblyName { get; init; }
+    public string? TargetFramework { get; init; }
+    public string? TargetFrameworks { get; init; }
+    public string? AndroidTargetFramework { get; init; }
     public string? Version { get; init; }
     public string? Authors { get; init; }
     public string? Description { get; init; }

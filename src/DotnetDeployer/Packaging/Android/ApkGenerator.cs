@@ -46,13 +46,15 @@ public class ApkGenerator : IPackageGenerator
         if (signing.IsConfigured)
             logger.Information("APK will be release-signed");
 
+        var targetFramework = metadata.AndroidTargetFramework ?? "net9.0-android";
+
         // Run dotnet publish for Android
         var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
         var signingArgs = signing.GetSigningArgs();
-        logger.Debug("Running: dotnet publish -c Release -f net9.0-android {VersionArgs} {SigningArgs}", versionArgs, signingArgs);
+        logger.Debug("Running: dotnet publish -c Release -f {TargetFramework} {VersionArgs} {SigningArgs}", targetFramework, versionArgs, signingArgs);
         var publishResult = await command.Execute(
             "dotnet",
-            $"publish \"{projectPath}\" -c Release -f net9.0-android {versionArgs} {signingArgs}",
+            $"publish \"{projectPath}\" -c Release -f {targetFramework} {versionArgs} {signingArgs}",
             projectDir);
 
         if (publishResult.IsFailure)
@@ -65,8 +67,8 @@ public class ApkGenerator : IPackageGenerator
         // Search for APK in multiple possible locations
         var searchDirs = new[]
         {
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-android", "publish"),
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-android"),
+            IOPath.Combine(projectDir, "bin", "Release", targetFramework, "publish"),
+            IOPath.Combine(projectDir, "bin", "Release", targetFramework),
             IOPath.Combine(projectDir, "bin", "Release")
         };
 
