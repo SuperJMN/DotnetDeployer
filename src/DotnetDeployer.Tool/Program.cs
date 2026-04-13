@@ -36,6 +36,8 @@ public static class Program
         rootCommand.Add(dryRunOption);
         rootCommand.Add(versionOption);
 
+        var exitCode = 0;
+
         rootCommand.SetAction(async (ParseResult parseResult) =>
         {
             var config = parseResult.GetValue(configOption) ?? new FileInfo("deployer.yaml");
@@ -54,13 +56,14 @@ public static class Program
             if (result.IsFailure)
             {
                 Log.Logger.Error("Deployment failed: {Error}", result.Error);
-                Environment.ExitCode = 1;
+                exitCode = 1;
             }
         });
 
         try
         {
-            return await rootCommand.Parse(args).InvokeAsync();
+            var parseExitCode = await rootCommand.Parse(args).InvokeAsync();
+            return parseExitCode != 0 ? parseExitCode : exitCode;
         }
         finally
         {
