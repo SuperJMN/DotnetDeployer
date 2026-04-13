@@ -65,43 +65,74 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
             var release = await client.Repository.Release.Create(config.Owner, config.Repo, releaseRequest);
             logger.Information("Created release: {Url}", release.HtmlUrl);
 
-            // Upload packages as they are generated
-            await foreach (var package in packages)
+            // Upload packages as they are generated, tracking count for validation
+            var uploadedCount = 0;
+
+            try
             {
-                try
+                await foreach (var package in packages)
                 {
-                    logger.Information("Uploading {FileName}...", package.FileName);
-
-                    // Read content using the byte source's observable
-                    using var ms = new MemoryStream();
-                    var tcs = new TaskCompletionSource<bool>();
-
-                    package.Content.Bytes.Subscribe(
-                        chunk => ms.Write(chunk, 0, chunk.Length),
-                        ex => tcs.TrySetException(ex),
-                        () => tcs.TrySetResult(true));
-
-                    await tcs.Task;
-                    ms.Position = 0;
-
-                    var assetUpload = new ReleaseAssetUpload
+                    try
                     {
-                        FileName = package.FileName,
-                        ContentType = GetContentType(package.Type),
-                        RawData = ms
-                    };
+                        logger.Information("Uploading {FileName}...", package.FileName);
 
-                    var asset = await client.Repository.Release.UploadAsset(release, assetUpload);
-                    logger.Information("Uploaded {FileName}: {Url}", package.FileName, asset.BrowserDownloadUrl);
-                }
-                finally
-                {
-                    package.Dispose();
+                        // Read content using the byte source's observable
+                        using var ms = new MemoryStream();
+                        var tcs = new TaskCompletionSource<bool>();
+
+                        package.Content.Bytes.Subscribe(
+                            chunk => ms.Write(chunk, 0, chunk.Length),
+                            ex => tcs.TrySetException(ex),
+                            () => tcs.TrySetResult(true));
+
+                        await tcs.Task;
+                        ms.Position = 0;
+
+                        var assetUpload = new ReleaseAssetUpload
+                        {
+                            FileName = package.FileName,
+                            ContentType = GetContentType(package.Type),
+                            RawData = ms
+                        };
+
+                        var asset = await client.Repository.Release.UploadAsset(release, assetUpload);
+                        uploadedCount++;
+                        logger.Information("Uploaded {FileName}: {Url}", package.FileName, asset.BrowserDownloadUrl);
+                    }
+                    finally
+                    {
+                        package.Dispose();
+                    }
                 }
             }
+            catch (Exception)
+            {
+                await DeleteReleaseSafely(client, config, release, logger);
+                throw;
+            }
 
-            logger.Information("GitHub release completed: {Url}", release.HtmlUrl);
+            if (uploadedCount == 0)
+            {
+                await DeleteReleaseSafely(client, config, release, logger);
+                throw new InvalidOperationException("All package generations failed. No assets were uploaded. The empty release has been deleted.");
+            }
+
+            logger.Information("GitHub release completed: {Url} ({Count} asset(s) uploaded)", release.HtmlUrl, uploadedCount);
         });
+    }
+
+    private static async Task DeleteReleaseSafely(GitHubClient client, GitHubConfig config, Release release, ILogger logger)
+    {
+        try
+        {
+            logger.Warning("Deleting empty release {Tag}...", release.TagName);
+            await client.Repository.Release.Delete(config.Owner, config.Repo, release.Id);
+            logger.Information("Deleted release {Tag}", release.TagName);
+        }
+        catch (Exception ex)
+        {
+            logger.Error(ex, "Failed to delete empty release {Tag}. Please delete it manually.", release.TagName);
+        }
     }
 
     private static string GetContentType(DeployerPackageType type) => type switch
