@@ -175,35 +175,17 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
 
     private static string? FindWwwroot(string projectDir)
     {
-        // Common locations for wwwroot after publish
-        var searchPaths = new[]
-        {
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-browser", "publish", "wwwroot"),
-            IOPath.Combine(projectDir, "bin", "Release", "net8.0-browser", "publish", "wwwroot"),
-            IOPath.Combine(projectDir, "bin", "Release", "net9.0-browser", "wwwroot"),
-            IOPath.Combine(projectDir, "bin", "Release", "net8.0-browser", "wwwroot"),
-        };
-
-        foreach (var path in searchPaths)
-        {
-            if (Directory.Exists(path))
-            {
-                return path;
-            }
-        }
-
-        // Try to find any wwwroot directory in bin/Release
         var releaseDir = IOPath.Combine(projectDir, "bin", "Release");
-        if (Directory.Exists(releaseDir))
+        if (!Directory.Exists(releaseDir))
         {
-            var wwwroots = Directory.GetDirectories(releaseDir, "wwwroot", SearchOption.AllDirectories);
-            if (wwwroots.Length > 0)
-            {
-                return wwwroots[0];
-            }
+            return null;
         }
 
-        return null;
+        // Search all wwwroot directories, preferring those under a "publish" folder
+        var wwwroots = Directory.GetDirectories(releaseDir, "wwwroot", SearchOption.AllDirectories);
+        return wwwroots
+            .OrderByDescending(p => p.Contains(IOPath.DirectorySeparatorChar + "publish" + IOPath.DirectorySeparatorChar))
+            .FirstOrDefault();
     }
 
     private static void CopyDirectory(string sourceDir, string destDir)
