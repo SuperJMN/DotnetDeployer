@@ -8,12 +8,12 @@ public class AndroidSigningConfig
     [YamlMember(Alias = "keystore")]
     public KeystoreSourceConfig? Keystore { get; set; }
 
-    [YamlMember(Alias = "storePasswordEnvVar")]
-    public string StorePasswordEnvVar { get; set; } = "";
+    [YamlMember(Alias = "storePassword")]
+    public ValueSourceConfig? StorePassword { get; set; }
 
     [YamlMember(Alias = "keyAlias")]
-    public string KeyAlias { get; set; } = "";
+    public ValueSourceConfig? KeyAlias { get; set; }
 
-    [YamlMember(Alias = "keyPasswordEnvVar")]
-    public string KeyPasswordEnvVar { get; set; } = "";
+    [YamlMember(Alias = "keyPassword")]
+    public ValueSourceConfig? KeyPassword { get; set; }
 }

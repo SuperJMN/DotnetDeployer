@@ -23,6 +23,15 @@ public sealed class AndroidSigningHelper : IDisposable
 
     public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config, ILogger logger)
     {
+        return Create(config, logger, new SecretsReader(), Environment.GetEnvironmentVariable);
+    }
+
+    public static Result<AndroidSigningHelper> Create(
+        AndroidSigningConfig? config,
+        ILogger logger,
+        ISecretsReader secretsReader,
+        Func<string, string?> getEnvironmentVariable)
+    {
         if (config?.Keystore is null)
         {
             logger.Warning("No signing configuration found. The package will be debug-signed. " +
@@ -30,44 +39,49 @@ public sealed class AndroidSigningHelper : IDisposable
             return Result.Success(Unconfigured());
         }
 
+        var keystoreResolver = new KeystoreSourceResolver(secretsReader, getEnvironmentVariable);
+        var valueResolver = new ValueSourceResolver(secretsReader, getEnvironmentVariable);
+
         return config.Keystore.ToKeystoreSource()
-            .Bind(source =>
-            {
-                var secretsReader = new SecretsReader();
-                var resolver = new KeystoreSourceResolver(secretsReader);
-                return resolver.Resolve(source);
-            })
-            .Bind(resolved => CreateFromResolved(resolved, config, logger));
+            .Bind(source => keystoreResolver.Resolve(source))
+            .Bind(resolved => CreateFromResolved(resolved, config, valueResolver, logger));
     }
 
-    private static Result<AndroidSigningHelper> CreateFromResolved(ResolvedKeystore keystore, AndroidSigningConfig config, ILogger logger)
+    private static Result<AndroidSigningHelper> CreateFromResolved(
+        ResolvedKeystore keystore,
+        AndroidSigningConfig config,
+        IValueSourceResolver valueResolver,
+        ILogger logger)
     {
-        if (string.IsNullOrWhiteSpace(config.StorePasswordEnvVar))
-            return Result.Failure<AndroidSigningHelper>("Android signing: 'storePasswordEnvVar' is required.");
-        if (string.IsNullOrWhiteSpace(config.KeyAlias))
+        if (config.StorePassword is null)
+            return Result.Failure<AndroidSigningHelper>("Android signing: 'storePassword' is required.");
+        if (config.KeyAlias is null)
             return Result.Failure<AndroidSigningHelper>("Android signing: 'keyAlias' is required.");
-        if (string.IsNullOrWhiteSpace(config.KeyPasswordEnvVar))
-            return Result.Failure<AndroidSigningHelper>("Android signing: 'keyPasswordEnvVar' is required.");
+        if (config.KeyPassword is null)
+            return Result.Failure<AndroidSigningHelper>("Android signing: 'keyPassword' is required.");
 
-        var missingVars = new List<string>();
+        var storePasswordResult = config.StorePassword.ToValueSource().Bind(valueResolver.Resolve);
+        var keyAliasResult = config.KeyAlias.ToValueSource().Bind(valueResolver.Resolve);
+        var keyPasswordResult = config.KeyPassword.ToValueSource().Bind(valueResolver.Resolve);
 
-        var storePassword = Environment.GetEnvironmentVariable(config.StorePasswordEnvVar);
-        if (string.IsNullOrWhiteSpace(storePassword)) missingVars.Add(config.StorePasswordEnvVar);
+        var unresolvedSources = new List<string>();
+        if (storePasswordResult.IsFailure) unresolvedSources.Add($"storePassword: {storePasswordResult.Error}");
+        if (keyPasswordResult.IsFailure) unresolvedSources.Add($"keyPassword: {keyPasswordResult.Error}");
 
-        var keyPassword = Environment.GetEnvironmentVariable(config.KeyPasswordEnvVar);
-        if (string.IsNullOrWhiteSpace(keyPassword)) missingVars.Add(config.KeyPasswordEnvVar);
-
-        if (missingVars.Count > 0)
+        if (unresolvedSources.Count > 0)
         {
-            logger.Warning("Android signing: environment variables not set: {MissingVars}. " +
-                           "The package will be debug-signed", string.Join(", ", missingVars));
+            logger.Warning("Android signing: could not resolve values: {Errors}. " +
+                           "The package will be debug-signed", string.Join("; ", unresolvedSources));
             return Result.Success(Unconfigured());
         }
+
+        if (keyAliasResult.IsFailure)
+            return Result.Failure<AndroidSigningHelper>($"Android signing: {keyAliasResult.Error}");
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"deployer-keystore-{Guid.NewGuid():N}.keystore");
         File.WriteAllBytes(tempPath, keystore.Bytes);
 
-        return Result.Success(new AndroidSigningHelper(tempPath, config.KeyAlias, storePassword, keyPassword));
+        return Result.Success(new AndroidSigningHelper(tempPath, keyAliasResult.Value, storePasswordResult.Value, keyPasswordResult.Value));
     }
 
     public bool IsConfigured => keystorePath is not null;

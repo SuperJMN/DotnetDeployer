@@ -1,5 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Secrets;
+using DotnetDeployer.Configuration.Signing;
 using DotnetDeployer.Domain;
 using Octokit;
 using Serilog;
@@ -24,13 +26,18 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
         return await Result.Try(async () =>
         {
-            var token = !string.IsNullOrEmpty(config.Token)
-                ? config.Token
-                : Environment.GetEnvironmentVariable(config.TokenEnvVar);
-
-            if (string.IsNullOrEmpty(token) && !dryRun)
+            string? token = null;
+            if (config.Token is not null)
             {
-                throw new InvalidOperationException($"GitHub token not found. Please provide it via 'token' in config or environment variable: {config.TokenEnvVar}");
+                var resolver = new ValueSourceResolver(new SecretsReader());
+                var resolved = config.Token.ToValueSource().Bind(resolver.Resolve);
+                if (resolved.IsFailure && !dryRun)
+                    throw new InvalidOperationException($"Failed to resolve GitHub token: {resolved.Error}");
+                token = resolved.IsSuccess ? resolved.Value : null;
+            }
+            else if (!dryRun)
+            {
+                throw new InvalidOperationException("GitHub 'token' is not configured.");
             }
 
             if (dryRun)

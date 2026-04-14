@@ -1,5 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Secrets;
+using DotnetDeployer.Configuration.Signing;
 using Serilog;
 using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
@@ -23,10 +25,18 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
     {
         logger.Information("Starting GitHub Pages deployment to {Owner}/{Repo}", config.Owner, config.Repo);
 
-        var token = Environment.GetEnvironmentVariable(config.TokenEnvVar);
-        if (string.IsNullOrEmpty(token) && !dryRun)
+        string? token = null;
+        if (config.Token is not null)
         {
-            return Result.Failure($"GitHub token not found in environment variable: {config.TokenEnvVar}");
+            var resolver = new ValueSourceResolver(new SecretsReader());
+            var resolved = config.Token.ToValueSource().Bind(resolver.Resolve);
+            if (resolved.IsFailure && !dryRun)
+                return Result.Failure($"Failed to resolve GitHub Pages token: {resolved.Error}");
+            token = resolved.IsSuccess ? resolved.Value : null;
+        }
+        else if (!dryRun)
+        {
+            return Result.Failure("GitHub Pages 'token' is not configured.");
         }
 
         foreach (var projectConfig in config.Projects)

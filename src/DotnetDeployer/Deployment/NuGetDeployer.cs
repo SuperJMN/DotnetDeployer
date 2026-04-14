@@ -1,5 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
+using DotnetDeployer.Configuration.Secrets;
+using DotnetDeployer.Configuration.Signing;
 using Serilog;
 using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
@@ -25,11 +27,19 @@ public class NuGetDeployer : INuGetDeployer
         return await Result.Try(async () =>
         {
             var solutionDir = Path.GetDirectoryName(solutionPath)!;
-            var apiKey = Environment.GetEnvironmentVariable(config.ApiKeyEnvVar);
 
-            if (string.IsNullOrEmpty(apiKey) && !dryRun)
+            string? apiKey = null;
+            if (config.ApiKey is not null)
             {
-                throw new InvalidOperationException($"API key not found in environment variable: {config.ApiKeyEnvVar}");
+                var resolver = new ValueSourceResolver(new SecretsReader());
+                var resolved = config.ApiKey.ToValueSource().Bind(resolver.Resolve);
+                if (resolved.IsFailure && !dryRun)
+                    throw new InvalidOperationException($"Failed to resolve NuGet API key: {resolved.Error}");
+                apiKey = resolved.IsSuccess ? resolved.Value : null;
+            }
+            else if (!dryRun)
+            {
+                throw new InvalidOperationException("NuGet 'apiKey' is not configured.");
             }
 
             // Pack all packable projects

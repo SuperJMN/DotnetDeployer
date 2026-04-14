@@ -1,3 +1,4 @@
+using DotnetDeployer.Configuration.Signing;
 using YamlDotNet.Serialization;
 
 namespace DotnetDeployer.Configuration;
@@ -16,8 +17,8 @@ public class GitHubPagesConfig
     [YamlMember(Alias = "repo")]
     public string Repo { get; set; } = "";
 
-    [YamlMember(Alias = "tokenEnvVar")]
-    public string TokenEnvVar { get; set; } = "GITHUB_TOKEN";
+    [YamlMember(Alias = "token")]
+    public ValueSourceConfig? Token { get; set; }
 
     [YamlMember(Alias = "branch")]
     public string Branch { get; set; } = "main";

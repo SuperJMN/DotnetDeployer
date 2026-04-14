@@ -26,7 +26,9 @@ version: 1
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
-  apiKeyEnvVar: NUGET_API_KEY
+  apiKey:
+    from: env
+    name: NUGET_API_KEY
 ```
 
 ### Full Example (NuGet + GitHub Releases + GitHub Pages)
@@ -38,14 +40,18 @@ version: 1
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
-  apiKeyEnvVar: NUGET_API_KEY
+  apiKey:
+    from: env
+    name: NUGET_API_KEY
 
 # GitHub Releases - builds platform-specific packages and uploads as assets
 github:
   enabled: true
   owner: YourGitHubUsername      # GitHub username or org
   repo: YourRepoName             # Repository name
-  tokenEnvVar: GITHUB_TOKEN      # Environment variable with PAT
+  token:                         # Flexible value source
+    from: env
+    name: GITHUB_TOKEN
   outputDir: artifacts           # Optional: where to save packages locally
   
   packages:
@@ -67,7 +73,9 @@ githubPages:
   enabled: true
   owner: YourGitHubUsername
   repo: MyApp-Pages              # Dedicated repo for GitHub Pages
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: env
+    name: GITHUB_TOKEN
   branch: main                   # Branch to push to (default: main)
   customDomain: myapp.example.com  # Optional: custom domain
   projects:
@@ -80,15 +88,16 @@ githubPages:
 |---------|----------|-------------|
 | `nuget` | `enabled` | Enable/disable NuGet deployment |
 | `nuget` | `source` | NuGet feed URL |
-| `nuget` | `apiKeyEnvVar` | Environment variable containing API key |
+| `nuget` | `apiKey` | NuGet API key — flexible value source |
 | `github` | `enabled` | Enable/disable GitHub Releases |
 | `github` | `owner` | GitHub username or organization |
 | `github` | `repo` | Repository name |
-| `github` | `tokenEnvVar` | Environment variable with GitHub token |
+| `github` | `token` | GitHub token — flexible value source |
 | `github` | `outputDir` | Local directory for generated packages |
 | `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `flatpak`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
+| `githubPages` | `token` | GitHub token — flexible value source |
 | `githubPages` | `customDomain` | Optional custom domain for the site |
 | `android` | `signing` | Top-level Android signing configuration |
 | `android.signing` | `keystore` | Keystore source block (see below) |
@@ -97,9 +106,9 @@ githubPages:
 | `android.signing.keystore` | `name` | Env var name (when `from: env`) |
 | `android.signing.keystore` | `key` | Secret key name (when `from: secret`) |
 | `android.signing.keystore` | `encoding` | Encoding: `raw`, `base64` |
-| `android.signing` | `storePasswordEnvVar` | Env var with keystore store password |
-| `android.signing` | `keyAlias` | Key alias for signing |
-| `android.signing` | `keyPasswordEnvVar` | Env var with key password |
+| `android.signing` | `storePassword` | Store password — flexible value source |
+| `android.signing` | `keyAlias` | Key alias — flexible value source |
+| `android.signing` | `keyPassword` | Key password — flexible value source |
 
 ---
 
@@ -240,7 +249,9 @@ version: 1
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
-  apiKeyEnvVar: NUGET_API_KEY
+  apiKey:
+    from: env
+    name: NUGET_API_KEY
 ```
 
 ### Desktop App with Multi-Platform Releases
@@ -252,7 +263,9 @@ github:
   enabled: true
   owner: MyOrg
   repo: MyDesktopApp
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: env
+    name: GITHUB_TOKEN
   packages:
     - project: src/MyApp/MyApp.csproj
       formats:
@@ -273,7 +286,9 @@ github:
   enabled: true
   owner: MyOrg
   repo: MyApp
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: env
+    name: GITHUB_TOKEN
   outputDir: artifacts
   packages:
     - project: src/MyApp.Desktop/MyApp.Desktop.csproj
@@ -293,9 +308,13 @@ github:
               from: env
               name: ANDROID_KEYSTORE_BASE64
               encoding: base64
-            storePasswordEnvVar: ANDROID_STORE_PASS
+            storePassword:
+              from: env
+              name: ANDROID_STORE_PASS
             keyAlias: release-key
-            keyPasswordEnvVar: ANDROID_KEY_PASS
+            keyPassword:
+              from: env
+              name: ANDROID_KEY_PASS
 
 android:
   signing:
@@ -303,9 +322,13 @@ android:
       from: env
       name: ANDROID_KEYSTORE_BASE64
       encoding: base64
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: env
+      name: ANDROID_STORE_PASS
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: env
+      name: ANDROID_KEY_PASS
 ```
 
 ### WebAssembly App to GitHub Pages
@@ -317,18 +340,66 @@ githubPages:
   enabled: true
   owner: MyOrg
   repo: myapp-demo
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: env
+    name: GITHUB_TOKEN
   projects:
     - project: src/MyApp.Browser/MyApp.Browser.csproj
 ```
 
 ---
 
-## Android Keystore Configuration
+## Flexible Value Sources
 
-The keystore can come from three sources. Use the expanded syntax for explicit, maintainable configuration.
+All sensitive or configurable tokens (`nuget.apiKey`, `github.token`, `githubPages.token`, `android.signing.storePassword`, `android.signing.keyAlias`, `android.signing.keyPassword`) use the same **flexible value source** model. Each accepts either:
 
-### File source
+- A **plain string** (shorthand for a literal value): `keyAlias: release-key`
+- An **expanded block** specifying the source type:
+
+| `from` | Required field | Description |
+|--------|---------------|-------------|
+| `literal` | `value` | Value written directly in YAML |
+| `env` | `name` | Read from an environment variable |
+| `secret` | `key` | Read from `deployer.secrets.yaml` |
+| `file` | `path` | Read from a file on disk |
+
+All sources except `literal` and `file` support an optional `encoding` field (`raw` or `base64`).
+
+### Examples
+
+```yaml
+# Plain string → literal
+keyAlias: release-key
+
+# Environment variable
+token:
+  from: env
+  name: GITHUB_TOKEN
+
+# Secret from deployer.secrets.yaml
+keyPassword:
+  from: secret
+  key: android_key_pass
+
+# File on disk
+apiKey:
+  from: file
+  path: ./secrets/nuget-key.txt
+
+# Base64-encoded env var (decoded at runtime)
+storePassword:
+  from: env
+  name: ENCODED_PASS
+  encoding: base64
+```
+
+---
+
+## Android Signing Configuration
+
+All signing parameters (`storePassword`, `keyAlias`, `keyPassword`) use the flexible value source model described above.
+
+### File keystore + env passwords
 
 ```yaml
 android:
@@ -336,12 +407,16 @@ android:
     keystore:
       from: file
       path: ./android/release.keystore
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: env
+      name: ANDROID_STORE_PASS
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: env
+      name: ANDROID_KEY_PASS
 ```
 
-### Environment variable (base64)
+### Environment variable keystore (base64)
 
 ```yaml
 android:
@@ -350,12 +425,16 @@ android:
       from: env
       name: ANDROID_KEYSTORE_BASE64
       encoding: base64
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: env
+      name: ANDROID_STORE_PASS
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: env
+      name: ANDROID_KEY_PASS
 ```
 
-### Secrets file (base64)
+### Secrets file (all from secrets)
 
 ```yaml
 android:
@@ -364,9 +443,46 @@ android:
       from: secret
       key: android_keystore_base64
       encoding: base64
-    storePasswordEnvVar: ANDROID_STORE_PASS
-    keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    storePassword:
+      from: secret
+      key: android_store_pass
+    keyAlias:
+      from: secret
+      key: android_key_alias
+    keyPassword:
+      from: secret
+      key: android_key_pass
+```
+
+### Mixed sources
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: env
+      name: ANDROID_KEYSTORE_BASE64
+      encoding: base64
+    storePassword:
+      from: env
+      name: ANDROID_STORE_PASS
+    keyAlias: release-key                  # literal shorthand
+    keyPassword:
+      from: secret
+      key: android_key_pass
+```
+
+### All literal (for local development)
+
+```yaml
+android:
+  signing:
+    keystore:
+      from: file
+      path: ./android/debug.keystore
+    storePassword: android
+    keyAlias: androiddebugkey
+    keyPassword: android
 ```
 
 The secrets file (`deployer.secrets.yaml`) is a flat YAML file in the repo root:

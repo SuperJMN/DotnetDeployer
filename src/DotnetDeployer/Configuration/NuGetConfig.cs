@@ -1,3 +1,4 @@
+using DotnetDeployer.Configuration.Signing;
 using YamlDotNet.Serialization;
 
 namespace DotnetDeployer.Configuration;
@@ -13,6 +14,6 @@ public class NuGetConfig
     [YamlMember(Alias = "source")]
     public string Source { get; set; } = "https://api.nuget.org/v3/index.json";
 
-    [YamlMember(Alias = "apiKeyEnvVar")]
-    public string ApiKeyEnvVar { get; set; } = "NUGET_API_KEY";
+    [YamlMember(Alias = "apiKey")]
+    public ValueSourceConfig? ApiKey { get; set; }
 }

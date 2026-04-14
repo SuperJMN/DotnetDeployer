@@ -186,13 +186,18 @@ public class KeystoreSourceConfigTests
                   from: env
                   name: ANDROID_KEYSTORE_BASE64
                   encoding: base64
-                storePasswordEnvVar: STORE_PASS
+                storePassword:
+                  from: env
+                  name: STORE_PASS
                 keyAlias: myalias
-                keyPasswordEnvVar: KEY_PASS
+                keyPassword:
+                  from: env
+                  name: KEY_PASS
             """;
 
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .WithTypeConverter(new ValueSourceConfigTypeConverter())
             .IgnoreUnmatchedProperties()
             .Build();
 
@@ -204,8 +209,17 @@ public class KeystoreSourceConfigTests
         Assert.Equal("env", config.Android.Signing.Keystore!.From);
         Assert.Equal("ANDROID_KEYSTORE_BASE64", config.Android.Signing.Keystore.Name);
         Assert.Equal("base64", config.Android.Signing.Keystore.Encoding);
-        Assert.Equal("STORE_PASS", config.Android.Signing.StorePasswordEnvVar);
-        Assert.Equal("myalias", config.Android.Signing.KeyAlias);
-        Assert.Equal("KEY_PASS", config.Android.Signing.KeyPasswordEnvVar);
+
+        Assert.NotNull(config.Android.Signing.StorePassword);
+        Assert.Equal("env", config.Android.Signing.StorePassword!.From);
+        Assert.Equal("STORE_PASS", config.Android.Signing.StorePassword.Name);
+
+        Assert.NotNull(config.Android.Signing.KeyAlias);
+        Assert.Equal("literal", config.Android.Signing.KeyAlias!.From);
+        Assert.Equal("myalias", config.Android.Signing.KeyAlias.Value);
+
+        Assert.NotNull(config.Android.Signing.KeyPassword);
+        Assert.Equal("env", config.Android.Signing.KeyPassword!.From);
+        Assert.Equal("KEY_PASS", config.Android.Signing.KeyPassword.Name);
     }
 }

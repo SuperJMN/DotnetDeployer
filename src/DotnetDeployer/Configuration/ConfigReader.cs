@@ -1,4 +1,5 @@
 using CSharpFunctionalExtensions;
+using DotnetDeployer.Configuration.Signing;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -15,6 +16,7 @@ public class ConfigReader : IConfigReader
     {
         deserializer = new DeserializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
+            .WithTypeConverter(new ValueSourceConfigTypeConverter())
             .IgnoreUnmatchedProperties()
             .Build();
     }
