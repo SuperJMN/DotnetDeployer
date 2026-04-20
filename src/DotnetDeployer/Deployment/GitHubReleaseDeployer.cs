@@ -42,6 +42,8 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
             if (dryRun)
             {
+                var dryTagName = $"v{version}";
+                logger.Information("[DRY-RUN] Would delete existing release for {Tag} if it exists", dryTagName);
                 logger.Information("[DRY-RUN] Would create release v{Version}", version);
 
                 await foreach (var package in packages)
@@ -67,6 +69,8 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
                 Prerelease = config.Prerelease,
                 GenerateReleaseNotes = true
             };
+
+            await EnsureNoExistingRelease(client, config, tagName, logger);
 
             logger.Debug("Creating release {Tag}", tagName);
             var release = await client.Repository.Release.Create(config.Owner, config.Repo, releaseRequest);
@@ -126,6 +130,21 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
             logger.Information("GitHub release completed: {Url} ({Count} asset(s) uploaded)", release.HtmlUrl, uploadedCount);
         });
+    }
+
+    private static async Task EnsureNoExistingRelease(GitHubClient client, GitHubConfig config, string tagName, ILogger logger)
+    {
+        try
+        {
+            var existing = await client.Repository.Release.Get(config.Owner, config.Repo, tagName);
+            logger.Warning("Release {Tag} already exists (id={Id}). Deleting it before recreating...", tagName, existing.Id);
+            await client.Repository.Release.Delete(config.Owner, config.Repo, existing.Id);
+            logger.Information("Deleted existing release {Tag}", tagName);
+        }
+        catch (NotFoundException)
+        {
+            // No existing release — nothing to do.
+        }
     }
 
     private static async Task DeleteReleaseSafely(GitHubClient client, GitHubConfig config, Release release, ILogger logger)
