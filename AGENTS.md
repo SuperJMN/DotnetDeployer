@@ -78,8 +78,7 @@ githubPages:
     name: GITHUB_TOKEN
   branch: main                   # Branch to push to (default: main)
   customDomain: myapp.example.com  # Optional: custom domain
-  projects:
-    - project: src/MyApp.Browser/MyApp.Browser.csproj
+  project: src/MyApp.Browser/MyApp.Browser.csproj
 ```
 
 ### Configuration Reference
@@ -97,6 +96,7 @@ githubPages:
 | `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `flatpak`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
+| `githubPages` | `project` | Path to the WebAssembly project to deploy |
 | `githubPages` | `token` | GitHub token — flexible value source |
 | `githubPages` | `customDomain` | Optional custom domain for the site |
 | `android` | `signing` | Top-level Android signing configuration |
@@ -343,8 +343,7 @@ githubPages:
   token:
     from: env
     name: GITHUB_TOKEN
-  projects:
-    - project: src/MyApp.Browser/MyApp.Browser.csproj
+  project: src/MyApp.Browser/MyApp.Browser.csproj
 ```
 
 ---

@@ -25,6 +25,11 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
     {
         logger.Information("Starting GitHub Pages deployment to {Owner}/{Repo}", config.Owner, config.Repo);
 
+        if (string.IsNullOrWhiteSpace(config.Project))
+        {
+            return Result.Failure("GitHub Pages 'project' is not configured.");
+        }
+
         string? token = null;
         if (config.Token is not null)
         {
@@ -39,30 +44,9 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
             return Result.Failure("GitHub Pages 'token' is not configured.");
         }
 
-        foreach (var projectConfig in config.Projects)
-        {
-            var result = await DeployProject(config, projectConfig, token, dryRun, configDir, logger);
-            if (result.IsFailure)
-            {
-                return result;
-            }
-        }
-
-        logger.Information("GitHub Pages deployment completed successfully");
-        return Result.Success();
-    }
-
-    private async Task<Result> DeployProject(
-        GitHubPagesConfig config,
-        GitHubPagesProjectConfig projectConfig,
-        string? token,
-        bool dryRun,
-        string configDir,
-        ILogger logger)
-    {
-        var projectPath = IOPath.IsPathRooted(projectConfig.Project)
-            ? projectConfig.Project
-            : IOPath.Combine(configDir, projectConfig.Project);
+        var projectPath = IOPath.IsPathRooted(config.Project)
+            ? config.Project
+            : IOPath.Combine(configDir, config.Project);
 
         logger.Information("Deploying {Project} to GitHub Pages", projectPath);
 
@@ -143,7 +127,7 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
             File.WriteAllText(IOPath.Combine(tempDir, ".nojekyll"), "");
 
             // 6. Add CNAME if specified
-            var customDomain = projectConfig.CustomDomain ?? config.CustomDomain;
+            var customDomain = config.CustomDomain;
             if (!string.IsNullOrEmpty(customDomain))
             {
                 logger.Debug("Creating CNAME for {Domain}", customDomain);

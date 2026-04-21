@@ -94,8 +94,7 @@ githubPages:
   owner: YourGitHubUsername
   repo: MyApp-Pages
   tokenEnvVar: GITHUB_TOKEN
-  projects:
-    - project: src/MyApp.Browser/MyApp.Browser.csproj
+  project: src/MyApp.Browser/MyApp.Browser.csproj
 ```
 
 ---

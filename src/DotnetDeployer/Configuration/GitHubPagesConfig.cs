@@ -5,6 +5,7 @@ namespace DotnetDeployer.Configuration;
 
 /// <summary>
 /// GitHub Pages deployment configuration.
+/// A single project is deployed to a single GitHub Pages repository.
 /// </summary>
 public class GitHubPagesConfig
 {
@@ -26,15 +27,6 @@ public class GitHubPagesConfig
     [YamlMember(Alias = "customDomain")]
     public string? CustomDomain { get; set; }
 
-    [YamlMember(Alias = "projects")]
-    public List<GitHubPagesProjectConfig> Projects { get; set; } = new();
-}
-
-public class GitHubPagesProjectConfig
-{
     [YamlMember(Alias = "project")]
     public string Project { get; set; } = "";
-
-    [YamlMember(Alias = "customDomain")]
-    public string? CustomDomain { get; set; }
 }
