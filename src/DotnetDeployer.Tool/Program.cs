@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using DotnetDeployer.Orchestration;
+using DotnetDeployer.Tool.Services;
 using Serilog;
 
 namespace DotnetDeployer.Tool;
@@ -14,6 +15,9 @@ public static class Program
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
+
+        Log.Logger.Information("DotnetDeployer v{Version}", VersionInfo.Current);
+        var updateCheck = UpdateChecker.CheckAsync(VersionInfo.Current, Log.Logger);
 
         var configOption = new Option<FileInfo>("--config", "-c")
         {
@@ -63,6 +67,14 @@ public static class Program
         try
         {
             var parseExitCode = await rootCommand.Parse(args).InvokeAsync();
+            try
+            {
+                await updateCheck.WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch
+            {
+                // best-effort update check
+            }
             return parseExitCode != 0 ? parseExitCode : exitCode;
         }
         finally
