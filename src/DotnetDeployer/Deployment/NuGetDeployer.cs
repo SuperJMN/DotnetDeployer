@@ -42,6 +42,24 @@ public class NuGetDeployer : INuGetDeployer
                 throw new InvalidOperationException("NuGet 'apiKey' is not configured.");
             }
 
+            // Clean any stale packages from previous runs so we only push what we pack now
+            var nupkgDir = Path.Combine(solutionDir, "nupkg");
+            if (Directory.Exists(nupkgDir))
+            {
+                var stale = Directory.GetFiles(nupkgDir, "*.nupkg")
+                    .Concat(Directory.GetFiles(nupkgDir, "*.snupkg"))
+                    .ToArray();
+                if (stale.Length > 0)
+                {
+                    logger.Debug("Removing {Count} stale package(s) from {Dir}", stale.Length, nupkgDir);
+                    foreach (var f in stale)
+                    {
+                        try { File.Delete(f); }
+                        catch (Exception ex) { logger.Warning(ex, "Could not delete stale package {File}", f); }
+                    }
+                }
+            }
+
             // Pack all packable projects
             logger.Debug("Packing NuGet packages...");
             var packResult = await command.Execute("dotnet", $"pack \"{solutionPath}\" -c Release -o nupkg /p:Version={version}", solutionDir);
@@ -51,7 +69,6 @@ public class NuGetDeployer : INuGetDeployer
             }
 
             // Find generated .nupkg files
-            var nupkgDir = Path.Combine(solutionDir, "nupkg");
             if (!Directory.Exists(nupkgDir))
             {
                 logger.Warning("No nupkg directory found, no packages to deploy");
