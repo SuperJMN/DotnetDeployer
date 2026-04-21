@@ -1,6 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
+using DotnetDeployer.Versioning;
 using DotnetPackaging.Flatpak;
 using Serilog;
 using Zafiro.DivineBytes;
@@ -45,6 +46,7 @@ public class FlatpakGenerator : IPackageGenerator
                 pub.SelfContained = true;
                 pub.Configuration = "Release";
                 pub.Rid = arch.ToLinuxRid();
+                pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
             logger);
 

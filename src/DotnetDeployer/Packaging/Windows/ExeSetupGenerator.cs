@@ -1,6 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
+using DotnetDeployer.Versioning;
 using DotnetPackaging.Exe;
 using Serilog;
 using Zafiro.DivineBytes;
@@ -46,6 +47,7 @@ public class ExeSetupGenerator : IPackageGenerator
                 pub.SelfContained = true;
                 pub.Configuration = "Release";
                 pub.Rid = arch.ToWindowsRid();
+                pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
             logger);
 

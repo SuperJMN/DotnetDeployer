@@ -6,6 +6,9 @@ public static class AndroidVersionHelper
     /// Builds MSBuild arguments to set Android version properties from a semantic version string.
     /// ApplicationDisplayVersion maps to android:versionName (e.g. "1.9.26").
     /// ApplicationVersion maps to android:versionCode (integer, e.g. 10926).
+    /// Version propagates into the managed assembly (AssemblyVersion / FileVersion /
+    /// InformationalVersion via MSBuild's default derivation) so the running app can
+    /// report the same version Deployer published.
     /// </summary>
     public static string GetVersionArgs(string? version)
     {
@@ -15,7 +18,7 @@ public static class AndroidVersionHelper
         }
 
         var versionCode = ToVersionCode(version);
-        return $"-p:ApplicationDisplayVersion={version} -p:ApplicationVersion={versionCode}";
+        return $"-p:Version={version} -p:ApplicationDisplayVersion={version} -p:ApplicationVersion={versionCode}";
     }
 
     /// <summary>

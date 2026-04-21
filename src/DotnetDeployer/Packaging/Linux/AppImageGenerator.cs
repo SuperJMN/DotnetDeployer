@@ -1,6 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
+using DotnetDeployer.Versioning;
 using DotnetPackaging.AppImage;
 using Serilog;
 using Zafiro.DivineBytes;
@@ -45,6 +46,7 @@ public class AppImageGenerator : IPackageGenerator
                 pub.SelfContained = true;
                 pub.Configuration = "Release";
                 pub.Rid = arch.ToLinuxRid();
+                pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
             logger);
 

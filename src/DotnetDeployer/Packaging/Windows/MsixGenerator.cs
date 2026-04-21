@@ -1,6 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
+using DotnetDeployer.Versioning;
 using DotnetPackaging.Msix;
 using Serilog;
 using Zafiro.DivineBytes;
@@ -37,6 +38,7 @@ public class MsixGenerator : IPackageGenerator
                 pub.SelfContained = false; // MSIX usually framework-dependent
                 pub.Configuration = "Release";
                 pub.Rid = arch.ToWindowsRid();
+                pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
             logger);
 

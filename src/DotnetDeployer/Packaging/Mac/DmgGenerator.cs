@@ -1,6 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
+using DotnetDeployer.Versioning;
 using DotnetPackaging.Dmg;
 using Serilog;
 using Zafiro.DivineBytes;
@@ -44,6 +45,7 @@ public class DmgGenerator : IPackageGenerator
                 pub.Configuration = "Release";
                 pub.SingleFile = true;
                 pub.Rid = arch.ToMacRid();
+                pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
             logger);
 
