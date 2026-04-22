@@ -66,12 +66,22 @@ public class GitVersionService
 
     private async Task<Result<string>> RunGitVersion(string workingDirectory, ILogger logger)
     {
-        // Run dotnet-gitversion and capture output
-        var result = await command.Execute("dotnet-gitversion", "/showvariable MajorMinorPatch", workingDirectory);
+        // Prefer the absolute path to the just-installed global tool: this works
+        // regardless of whether $HOME/.dotnet/tools is on PATH (which is often
+        // not the case in service / CI environments where DotnetDeployer runs).
+        var executable = ResolveGitVersionExecutable();
+
+        var result = await command.Execute(executable, "/showvariable MajorMinorPatch", workingDirectory);
+
+        if (result.IsFailure && executable != "dotnet-gitversion")
+        {
+            // Fallback to PATH-based lookup in case the tool was installed elsewhere.
+            result = await command.Execute("dotnet-gitversion", "/showvariable MajorMinorPatch", workingDirectory);
+        }
 
         if (result.IsFailure)
         {
-            // Try alternative: dotnet gitversion (some installations use this)
+            // Last resort: dotnet's tool resolver (requires the tool to be discoverable by name).
             result = await command.Execute("dotnet", "gitversion /showvariable MajorMinorPatch", workingDirectory);
         }
 
@@ -89,5 +99,27 @@ public class GitVersionService
 
         logger.Information("GitVersion detected version: {Version}", version);
         return Result.Success(version);
+    }
+
+    /// <summary>
+    /// Returns the absolute path to the global <c>dotnet-gitversion</c> tool when it
+    /// can be located under <c>$HOME/.dotnet/tools</c>, or the bare command name
+    /// (relying on PATH resolution) as a fallback.
+    /// </summary>
+    private static string ResolveGitVersionExecutable()
+    {
+        var exeName = OperatingSystem.IsWindows() ? "dotnet-gitversion.exe" : "dotnet-gitversion";
+
+        var home = Environment.GetEnvironmentVariable("HOME")
+                   ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        if (!string.IsNullOrEmpty(home))
+        {
+            var candidate = Path.Combine(home, ".dotnet", "tools", exeName);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return "dotnet-gitversion";
     }
 }
