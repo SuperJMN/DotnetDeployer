@@ -24,6 +24,7 @@ public class DeploymentOrchestrator
     private readonly IGitHubReleaseDeployer githubDeployer;
     private readonly IGitHubPagesDeployer githubPagesDeployer;
     private readonly GitVersionService gitVersionService;
+    private readonly Packaging.Android.AndroidPrerequisitesInstaller androidPrerequisites;
     private readonly ICommand command;
 
     public DeploymentOrchestrator(
@@ -35,7 +36,8 @@ public class DeploymentOrchestrator
         INuGetDeployer? nugetDeployer = null,
         IGitHubReleaseDeployer? githubDeployer = null,
         IGitHubPagesDeployer? githubPagesDeployer = null,
-        GitVersionService? gitVersionService = null)
+        GitVersionService? gitVersionService = null,
+        Packaging.Android.AndroidPrerequisitesInstaller? androidPrerequisites = null)
     {
         var cmd = command ?? new Command(Maybe.From(logger));
 
@@ -47,6 +49,7 @@ public class DeploymentOrchestrator
         this.githubDeployer = githubDeployer ?? new GitHubReleaseDeployer();
         this.githubPagesDeployer = githubPagesDeployer ?? new GitHubPagesDeployer(cmd);
         this.gitVersionService = gitVersionService ?? new GitVersionService(cmd);
+        this.androidPrerequisites = androidPrerequisites ?? new Packaging.Android.AndroidPrerequisitesInstaller(cmd);
     }
 
     public async Task<Result> Run(string configPath, DeployOptions options, ILogger logger)
@@ -82,6 +85,21 @@ public class DeploymentOrchestrator
                     if (workloadResult.IsFailure)
                     {
                         logger.Warning("Workload restore failed (may not be needed): {Error}", workloadResult.Error);
+                    }
+                }
+
+                // Provision Android SDK + JDK if any Android package is configured.
+                // The `android` workload only ships .NET-side bits; the actual
+                // Android SDK (aapt2, build-tools, platforms…) must be installed
+                // separately via the InstallAndroidDependencies MSBuild target.
+                var androidProjects = CollectAndroidProjectPaths(config, configDir);
+                if (androidProjects.Count > 0)
+                {
+                    var anyAndroidProj = androidProjects[0];
+                    var androidResult = await androidPrerequisites.Ensure(anyAndroidProj, logger);
+                    if (androidResult.IsFailure)
+                    {
+                        errors.Add($"Android prerequisites: {androidResult.Error}");
                     }
                 }
 
@@ -282,5 +300,28 @@ public class DeploymentOrchestrator
         }
 
         return Maybe<string>.None;
+    }
+
+    private static List<string> CollectAndroidProjectPaths(DeployerConfig config, string configDir)
+    {
+        var packages = config.GitHub?.Packages;
+        if (packages is null || packages.Count == 0) return [];
+
+        var result = new List<string>();
+        foreach (var pkg in packages)
+        {
+            var hasAndroid = pkg.Formats.Any(f =>
+            {
+                var t = f.GetPackageType();
+                return t is PackageType.Apk or PackageType.Aab;
+            });
+            if (!hasAndroid) continue;
+
+            var path = Path.IsPathRooted(pkg.Project)
+                ? pkg.Project
+                : Path.Combine(configDir, pkg.Project);
+            result.Add(path);
+        }
+        return result;
     }
 }
