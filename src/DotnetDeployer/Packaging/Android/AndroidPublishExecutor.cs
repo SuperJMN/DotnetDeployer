@@ -89,10 +89,15 @@ public sealed class AndroidPublishExecutor
         // workload installs that touch /usr/share/dotnet and similar paths.
         // We chown the bind mount back to the host user before exiting so the
         // generated APK/AAB and obj/bin folders remain writable.
+        // `dotnet workload restore <project>` only updates manifests for a
+        // single project, it does not install the actual workload packs (it
+        // reports "No workloads installed for this feature band" and exits 0).
+        // Install the android workload explicitly so the subsequent publish
+        // has aapt2, the Java tooling, and the runtime packs available.
         var script = new StringBuilder()
             .AppendLine("set -e")
             .AppendLine($"cd \"{workInside}\"")
-            .AppendLine($"dotnet workload restore \"{projectInside}\"")
+            .AppendLine("dotnet workload install android --skip-manifest-update")
             .AppendLine($"dotnet publish \"{projectInside}\" {publishArgs}")
             .AppendLine($"chown -R {uid}:{gid} \"{workInside}\" 2>/dev/null || true")
             .ToString();
