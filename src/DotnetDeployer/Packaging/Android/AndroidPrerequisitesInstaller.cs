@@ -45,7 +45,7 @@ public class AndroidPrerequisitesInstaller
     public async Task<Result> Ensure(string anyAndroidProject, ILogger logger)
     {
         var sdkDir = ResolveSdkDir();
-        var jdkDirResult = ResolveJdkDir();
+        var jdkDirResult = await EnsureJdk(logger);
         if (jdkDirResult.IsFailure)
             return Result.Failure(jdkDirResult.Error);
 
@@ -154,9 +154,163 @@ public class AndroidPrerequisitesInstaller
             if (any is not null) return Result.Success(any);
         }
 
-        return Result.Failure<string>(
-            "No JDK found. Install OpenJDK 17 (e.g. `apt install openjdk-17-jdk-headless`) " +
-            "or set JAVA_HOME to an existing JDK directory.");
+        // Cached previous auto-install.
+        var cached = AutoInstallDir();
+        if (IsJdkDir(cached)) return Result.Success(cached);
+        var nested = TryFindJdkUnder(cached);
+        if (nested is not null) return Result.Success(nested);
+
+        return Result.Failure<string>("No JDK found.");
+    }
+
+    /// <summary>
+    /// Returns a usable JDK 17, downloading and extracting Microsoft OpenJDK
+    /// 17 to a per-user cache (<c>$HOME/.dotnet-android-jdk</c>) if none is
+    /// already installed. Idempotent and side-effect-free when a JDK is
+    /// already present.
+    /// </summary>
+    private async Task<Result<string>> EnsureJdk(ILogger logger)
+    {
+        var existing = ResolveJdkDir();
+        if (existing.IsSuccess)
+        {
+            logger.Debug("Using JDK at {JdkDir}", existing.Value);
+            return existing;
+        }
+
+        var (url, archiveName, isZip) = ResolveMicrosoftJdkArtifact();
+        if (url is null)
+        {
+            return Result.Failure<string>(
+                $"Cannot auto-install JDK on this platform " +
+                $"(OS={Environment.OSVersion.Platform}, Arch={System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}). " +
+                $"Install OpenJDK 17 manually and set JAVA_HOME.");
+        }
+
+        var installRoot = AutoInstallDir();
+        Directory.CreateDirectory(installRoot);
+        var archivePath = IOPath.Combine(installRoot, archiveName);
+
+        logger.Information("No JDK found. Downloading Microsoft OpenJDK 17 from {Url}", url);
+
+        try
+        {
+            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+            await using (var resp = await http.GetStreamAsync(url))
+            await using (var file = File.Create(archivePath))
+            {
+                await resp.CopyToAsync(file);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<string>($"Failed to download JDK: {ex.Message}");
+        }
+
+        logger.Information("Extracting JDK to {InstallRoot}…", installRoot);
+
+        var extractResult = await ExtractArchive(archivePath, installRoot, isZip);
+        try { File.Delete(archivePath); } catch { /* best effort */ }
+        if (extractResult.IsFailure)
+            return Result.Failure<string>(extractResult.Error);
+
+        var found = TryFindJdkUnder(installRoot);
+        if (found is null)
+        {
+            return Result.Failure<string>(
+                $"JDK archive extracted to {installRoot} but no jdk-* directory containing bin/javac was found.");
+        }
+
+        logger.Information("JDK installed at {JdkDir}", found);
+        return Result.Success(found);
+    }
+
+    private static (string? Url, string ArchiveName, bool IsZip) ResolveMicrosoftJdkArtifact()
+    {
+        var arch = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture;
+
+        if (OperatingSystem.IsLinux())
+        {
+            return arch switch
+            {
+                System.Runtime.InteropServices.Architecture.X64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-linux-x64.tar.gz", "msjdk17-linux-x64.tar.gz", false),
+                System.Runtime.InteropServices.Architecture.Arm64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-linux-aarch64.tar.gz", "msjdk17-linux-aarch64.tar.gz", false),
+                _ => (null, "", false),
+            };
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            return arch switch
+            {
+                System.Runtime.InteropServices.Architecture.X64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-macos-x64.tar.gz", "msjdk17-macos-x64.tar.gz", false),
+                System.Runtime.InteropServices.Architecture.Arm64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-macos-aarch64.tar.gz", "msjdk17-macos-aarch64.tar.gz", false),
+                _ => (null, "", false),
+            };
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            return arch switch
+            {
+                System.Runtime.InteropServices.Architecture.X64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-windows-x64.zip", "msjdk17-windows-x64.zip", true),
+                System.Runtime.InteropServices.Architecture.Arm64 =>
+                    ("https://aka.ms/download-jdk/microsoft-jdk-17-windows-aarch64.zip", "msjdk17-windows-aarch64.zip", true),
+                _ => (null, "", false),
+            };
+        }
+        return (null, "", false);
+    }
+
+    private async Task<Result> ExtractArchive(string archivePath, string destinationDir, bool isZip)
+    {
+        if (isZip)
+        {
+            try
+            {
+                System.IO.Compression.ZipFile.ExtractToDirectory(archivePath, destinationDir, overwriteFiles: true);
+                return Result.Success();
+            }
+            catch (Exception ex)
+            {
+                return Result.Failure($"Failed to extract zip: {ex.Message}");
+            }
+        }
+
+        // Use the system tar — it preserves symlinks and executable bits,
+        // which built-in .NET extraction does poorly for JDK tarballs.
+        var result = await command.Execute("tar", $"-xzf \"{archivePath}\" -C \"{destinationDir}\"", destinationDir);
+        return result.IsFailure
+            ? Result.Failure($"tar extraction failed: {result.Error}")
+            : Result.Success();
+    }
+
+    /// <summary>
+    /// Finds a <c>jdk-*</c> directory under <paramref name="root"/> that
+    /// looks like a real JDK (contains <c>bin/javac</c>). On macOS the
+    /// usable JDK lives at <c>jdk-…/Contents/Home</c>.
+    /// </summary>
+    private static string? TryFindJdkUnder(string root)
+    {
+        if (!Directory.Exists(root)) return null;
+
+        foreach (var dir in Directory.EnumerateDirectories(root))
+        {
+            if (IsJdkDir(dir)) return dir;
+            var macHome = IOPath.Combine(dir, "Contents", "Home");
+            if (IsJdkDir(macHome)) return macHome;
+        }
+        return null;
+    }
+
+    private static string AutoInstallDir()
+    {
+        var home = Environment.GetEnvironmentVariable("HOME")
+                   ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return IOPath.Combine(home, ".dotnet-android-jdk");
     }
 
     private static bool IsJdkDir(string dir)
