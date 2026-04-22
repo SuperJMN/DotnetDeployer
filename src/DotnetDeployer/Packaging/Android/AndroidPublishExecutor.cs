@@ -72,9 +72,14 @@ public sealed class AndroidPublishExecutor
         var projectInside = "/work/" + IOPath.GetRelativePath(mountRoot, projectPath).Replace('\\', '/');
         var workInside = "/work/" + IOPath.GetRelativePath(mountRoot, workingDirectory).Replace('\\', '/');
 
+        // Use a cache scoped to the containerized publish, separate from the
+        // host's ~/.nuget/packages. Sharing the host cache poisons the
+        // container's workload metadata (the host runs an arm64 SDK; the
+        // container an amd64 SDK with potentially a different feature band)
+        // and breaks `dotnet workload restore` with cryptic JSON parse errors.
         var nugetCache = IOPath.Combine(
             Environment.GetEnvironmentVariable("HOME") ?? "/tmp",
-            ".nuget", "packages");
+            ".dotnetdeployer", "container-nuget");
         Directory.CreateDirectory(nugetCache);
 
         var uid = RunCapture("id", "-u").Trim();
