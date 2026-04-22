@@ -1,112 +1,45 @@
-# Android publishing on non-x64 Linux hosts
+# Android publish on non-x64 Linux
 
-## Background
+**Status: blocked / TODO.** Tracking a clean resolution rather than shipping a brittle workaround.
 
-`Microsoft.Android.Sdk.Linux` (the workload pack `dotnet publish` consumes
-when the target framework is `net*-android`) ships several MSBuild-side
-native binaries that are **x86_64-only**:
+## What does and doesn't work today
 
-- `tools/Linux/aapt2`             — invoked as a separate process.
-- `tools/libMono.Unix.so`         — P/Invoked from MSBuild tasks.
-- `tools/libZipSharpNative-*.so`  — P/Invoked from MSBuild tasks.
+| Host | Android publish |
+|---|---|
+| Linux x86_64 | Works natively |
+| Windows x86_64 | Works natively |
+| macOS (Intel + Apple Silicon) | Works natively |
+| **Linux arm64** (Raspberry Pi, Ampere/Graviton, Linux VMs on Apple Silicon) | **Fails fast** with a clear error from `AndroidPublishExecutor` |
 
-The package is still named `Microsoft.Android.Sdk.Linux` (no host arch
-suffix) and the latest .NET 11 preview at the time of writing
-(`36.99.0-preview.3.10`, 2026-04-14) keeps these binaries x86_64-only.
-There is no `linux-arm64` host variant published.
+If a Fleet worker on Linux/arm64 picks up an Android-targeted job, DotnetDeployer aborts that target with a message pointing at the two tracking issues (see below). Other targets (desktop deb, Windows setup exe, NuGet packages) for the same project are unaffected and continue to publish.
 
-Consequence: a Linux arm64 worker (Raspberry Pi, Apple Silicon Linux VM,
-Ampere CI runner, …) **cannot** drive `dotnet publish` against an Android
-target framework natively. `qemu-user-static` only solves the standalone
-process case (`aapt2`); it cannot inject an x86_64 `.so` into a native
-arm64 `dotnet` process.
+## Why we can't just route through a container
 
-## Design goal
+The first instinct is "spin up a `linux/amd64` container with `qemu-user-static`, run `dotnet publish` inside, mount the result back". Tried it; doesn't work.
 
-DotnetFleet's worker pool is intentionally **fungible** ("any worker can
-take any deployment"). Discriminating workers by capability (e.g. Android
-only on x86_64 nodes) breaks that contract and shifts the routing burden
-onto the coordinator and the user.
+`qemu-user` emulating amd64 on aarch64 cannot run the .NET runtime reliably. Even a trivial `dotnet new console` segfaults inside `mcr.microsoft.com/dotnet/sdk:10.0` under `linux/amd64`. The PLINQ ETW provider initialization throws on startup; threading-heavy paths abort with SIGSEGV. Confirmed empirically with both Debian's qemu-user-static 5.2 and `tonistiigi/binfmt`'s qemu 9.x, on a Raspberry Pi 4 running Raspberry Pi OS 64-bit (kernel 6.x).
 
-DotnetDeployer must therefore make Android publishing work on **every**
-supported host architecture, even when the cost is higher (emulation).
+This isn't something a flag fixes — the .NET runtime makes assumptions about signal handling and futex semantics that qemu-user doesn't honour. It's a known class of bugs in the dotnet/runtime tracker.
 
-## Approach: containerized x86_64 publish
+## Why we can't just patch the SDK pack on disk
 
-When DotnetDeployer detects:
+The `Microsoft.Android.Sdk.Linux` workload pack ships these binaries as **x86_64 ELFs only** — they're invoked from MSBuild tasks running inside the native arm64 dotnet process, so they have to be replaceable with arm64 builds:
 
-```
-RuntimeInformation.IsOSPlatform(Linux)
-  && RuntimeInformation.OSArchitecture != X64
-  && project targets net*-android
-```
+- `tools/Linux/aapt2`
+- `tools/libMono.Unix.so`
+- `tools/libZipSharpNative-3-3.so`
+- `tools/Linux/binutils/bin/{as,ld,llc,llvm-mc,llvm-objcopy,llvm-strip}` and friends (only needed for AOT)
 
-it routes the Android publish through a `linux/amd64` Docker container
-backed by `mcr.microsoft.com/dotnet/sdk:10.0`. On x86_64 hosts the native
-path is unchanged — zero overhead for the common case. On non-x86_64
-hosts the build runs under qemu-user emulation transparently.
+We *could* build arm64 replacements ourselves and overlay them onto the pack. That's a real project — see [`SuperJMN/DotnetAndroidArm64Shims`](https://github.com/SuperJMN/DotnetAndroidArm64Shims). It's deliberately kept out of DotnetDeployer because:
 
-### Required host capabilities (non-x64 path)
+- The maintenance burden is non-trivial (`aapt2` has strict version-match against the pack, and Microsoft bumps it monthly — `error XA0111: Unsupported version of AAPT2`).
+- It deserves its own release cadence, CI, and test surface separate from the deployer.
 
-| Capability                | Why                                  | How DotnetDeployer reacts if missing |
-| ------------------------- | ------------------------------------ | ------------------------------------ |
-| `docker` (any recent)     | Run the amd64 SDK container          | Fail with explicit install hint      |
-| `qemu-user-static` + binfmt registered for amd64 | Emulate x86_64 syscalls inside the container | Auto-register via `tonistiigi/binfmt --install amd64` (idempotent) |
+## How this gets unblocked
 
-We deliberately do **not** auto-install Docker via apt: the user must be
-added to the `docker` group, which only takes effect on a new login
-session — too brittle to silently chain.
+Either of these closes the gap:
 
-### Mount layout inside the container
+1. **Upstream provides linux-arm64 builds.** Asked here: <https://github.com/dotnet/android/issues/11184>. If accepted, the pack just works on arm64 and we delete the short-circuit in `AndroidPublishExecutor`.
+2. **`DotnetAndroidArm64Shims` ships v1.** Then DotnetDeployer's `AndroidPrerequisitesInstaller` invokes its bootstrap to overlay the shim binaries before publish, and `AndroidPublishExecutor` lets the publish proceed natively.
 
-- `/work`            ← bind of the repo / project root (rw).
-- `/root/.nuget`     ← bind of a host cache dir to avoid re-downloading
-                       NuGet packages on every build.
-- `/keystore`        ← bind of the temp keystore used for signing (ro).
-
-### Commands run inside the container
-
-```
-dotnet workload restore <project>
-dotnet publish <project> -c Release -f net*-android \
-  -p:Version=… -p:ApplicationVersion=… -p:ApplicationDisplayVersion=… \
-  -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=/keystore/<file> …
-```
-
-The resulting `.apk`/`.aab` lands under `/work/.../bin/Release/...`,
-visible to the host immediately via the bind mount.
-
-## Performance expectations
-
-Benchmarks observed on a Raspberry Pi 4 (Cortex-A72, 4GB) with
-`qemu-x86_64-static`:
-
-| Operation                                      | Measured  |
-| ---------------------------------------------- | --------- |
-| `docker pull mcr.microsoft.com/dotnet/sdk:10.0`| ~3 min (one-off, ~1 GB) |
-| `dotnet --version` inside emulated container   | ~17 s (cold) |
-| `dotnet publish` of a small Avalonia Android app | TBD — expected 30–60 min vs ~2 min on x64 |
-
-The trade-off is acceptable as long as worker fungibility is preserved.
-
-## Out of scope (today)
-
-- Auto-installing Docker on the worker.
-- Detecting and offloading to a different worker on the coordinator.
-- Caching the SDK image bytes on the coordinator and shipping them to
-  workers (a future optimization to avoid every worker pulling 1 GB).
-
-## Status / TODO
-
-- [x] Diagnosed root cause (workload pack is host-x86_64-only).
-- [x] Verified `linux/amd64` containers run on RPi4 arm64 with qemu binfmt.
-- [x] Verified `mcr.microsoft.com/dotnet/sdk:10.0` boots emulated.
-- [ ] Implement `IAndroidPublisher` abstraction with two strategies:
-      `NativeAndroidPublisher` and `ContainerizedAndroidPublisher`.
-- [ ] Strategy selection based on host arch + target framework.
-- [ ] `EnsureDocker()` precondition check with actionable error.
-- [ ] `EnsureBinfmtAmd64()` idempotent helper.
-- [ ] Wire publish through container with bind mounts and NuGet cache.
-- [ ] End-to-end validation: Pokemon APK built on rpi4 worker.
-- [ ] Unit tests for the strategy selector.
-- [ ] Document in main README.
+Whichever lands first wins. Until then: clear failure with actionable links, no silent fallbacks, no half-working containerized path.
