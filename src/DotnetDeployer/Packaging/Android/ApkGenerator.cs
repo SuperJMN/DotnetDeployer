@@ -51,11 +51,10 @@ public class ApkGenerator : IPackageGenerator
         // Run dotnet publish for Android
         var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
         var signingArgs = signing.GetSigningArgs();
-        logger.Debug("Running: dotnet publish -c Release -f {TargetFramework} {VersionArgs} {SigningArgs}", targetFramework, versionArgs, signingArgs);
-        var publishResult = await command.Execute(
-            "dotnet",
-            $"publish \"{projectPath}\" -c Release -f {targetFramework} {versionArgs} {signingArgs}",
-            projectDir);
+        var publishArgs = $"-c Release -f {targetFramework} {versionArgs} {signingArgs}";
+        logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
+        var executor = new AndroidPublishExecutor(command, logger);
+        var publishResult = await executor.Publish(projectPath, publishArgs, projectDir);
 
         if (publishResult.IsFailure)
         {

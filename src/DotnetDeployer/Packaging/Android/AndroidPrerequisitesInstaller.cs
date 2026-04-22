@@ -48,6 +48,19 @@ public class AndroidPrerequisitesInstaller
     /// MSBuild property lookups.</param>
     public async Task<Result> Ensure(string anyAndroidProject, ILogger logger)
     {
+        // On non-x64 Linux hosts the Android publish runs inside a linux/amd64
+        // Docker container that already bundles the JDK and downloads the SDK
+        // bits as part of `dotnet workload restore`. Provisioning a host-side
+        // SDK there would be wasted work (and would also fail, since the
+        // workload pack's helpers are x86_64-only). See
+        // docs/android-on-non-x64-linux.md for the full story.
+        if (AndroidPublishExecutor.RequiresContainer)
+        {
+            logger.Information(
+                "Host is non-x64 Linux — Android publish will run inside a linux/amd64 container; skipping host-side JDK/SDK provisioning.");
+            return Result.Success();
+        }
+
         var sdkDir = ResolveSdkDir();
         var jdkDirResult = await EnsureJdk(logger);
         if (jdkDirResult.IsFailure)
