@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using Serilog;
@@ -16,8 +19,8 @@ namespace DotnetDeployer.Packaging.Android;
 /// This is intentionally separate from <c>dotnet workload restore</c>:
 /// the <c>android</c> workload only installs the .NET-side bits
 /// (<c>Microsoft.Android.Sdk.*</c>, MSBuild targets, runtimes). The actual
-/// Android SDK is provisioned via the <c>InstallAndroidDependencies</c>
-/// MSBuild target shipped by that workload — which can download the SDK
+/// Android SDK is provisioned by downloading Google's official
+/// <c>cmdline-tools</c> bundle and running <c>sdkmanager</c> against it.
 /// and accept its licenses non-interactively when invoked correctly.
 /// </para>
 ///
@@ -41,7 +44,8 @@ public class AndroidPrerequisitesInstaller
     /// looking sane) and exports the toolchain env vars to the current process.
     /// </summary>
     /// <param name="anyAndroidProject">Any csproj that targets <c>net*-android</c>;
-    /// it is only used as the host for the <c>InstallAndroidDependencies</c> target.</param>
+    /// it is only used to detect the desired Android API level and to anchor
+    /// MSBuild property lookups.</param>
     public async Task<Result> Ensure(string anyAndroidProject, ILogger logger)
     {
         var sdkDir = ResolveSdkDir();
@@ -64,25 +68,38 @@ public class AndroidPrerequisitesInstaller
             return Result.Success();
         }
 
+        // We deliberately bypass the workload's `InstallAndroidDependencies`
+        // MSBuild target. That target relies on Mono.Unix native shims that
+        // Microsoft.Android.Sdk.Linux only ships for x86_64, so it crashes
+        // with `XAIAD7000: Unable to load shared library 'Mono.Unix'` on
+        // every other platform (notably Linux arm64 — Raspberry Pi, Apple
+        // Silicon under Linux VMs, etc.). Going through Google's official
+        // command-line tools is portable, version-stable, and it's also
+        // what Android Studio uses under the hood.
+
         Directory.CreateDirectory(sdkDir);
 
-        logger.Information("Installing Android SDK at {SdkDir} (JDK at {JdkDir})…", sdkDir, jdkDir);
+        logger.Information("Bootstrapping Android SDK at {SdkDir} (JDK at {JdkDir})…", sdkDir, jdkDir);
 
-        var args =
-            $"build \"{anyAndroidProject}\" -t:InstallAndroidDependencies " +
-            $"-p:AcceptAndroidSDKLicenses=True " +
-            $"-p:AndroidSdkDirectory=\"{sdkDir}\" " +
-            $"-p:JavaSdkDirectory=\"{jdkDir}\" " +
-            $"-nologo -v:minimal";
+        var sdkmanager = await EnsureCmdlineTools(sdkDir, logger);
+        if (sdkmanager.IsFailure)
+            return Result.Failure(sdkmanager.Error);
 
-        var projectDir = IOPath.GetDirectoryName(anyAndroidProject)!;
-        var result = await command.Execute("dotnet", args, projectDir);
+        var apiLevel = DetectAndroidApiLevel(anyAndroidProject) ?? DefaultAndroidApiLevel;
+        var buildToolsVersion = $"{apiLevel}.0.0";
+        logger.Information("Installing platform-tools, platforms;android-{Api}, build-tools;{Bt}", apiLevel, buildToolsVersion);
 
-        if (result.IsFailure)
-        {
-            return Result.Failure(
-                $"Failed to install Android SDK via InstallAndroidDependencies: {result.Error}");
-        }
+        // Accept all licenses non-interactively (`yes |` equivalent).
+        var licResult = await RunSdkManager(sdkmanager.Value, jdkDir, sdkDir, "--licenses", logger,
+            stdin: string.Concat(Enumerable.Repeat("y\n", 30)));
+        if (licResult.IsFailure)
+            return Result.Failure($"Failed to accept Android SDK licenses: {licResult.Error}");
+
+        var pkgs =
+            $"\"platform-tools\" \"platforms;android-{apiLevel}\" \"build-tools;{buildToolsVersion}\"";
+        var installResult = await RunSdkManager(sdkmanager.Value, jdkDir, sdkDir, pkgs, logger);
+        if (installResult.IsFailure)
+            return Result.Failure($"Failed to install Android SDK packages: {installResult.Error}");
 
         logger.Information("Android SDK ready.");
         return Result.Success();
@@ -110,6 +127,168 @@ public class AndroidPrerequisitesInstaller
         return packages
             .Where(p => p.Types.Any(t => t is PackageType.Apk or PackageType.Aab))
             .Select(p => p.ProjectPath);
+    }
+
+    /// <summary>
+    /// Default Android API level used when we can't read it from the project
+    /// (e.g. malformed csproj). Matches the workload's currently-shipping
+    /// default of API 36.
+    /// </summary>
+    private const int DefaultAndroidApiLevel = 36;
+
+    private const string CmdlineToolsLinux =
+        "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip";
+    private const string CmdlineToolsMac =
+        "https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip";
+    private const string CmdlineToolsWindows =
+        "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip";
+
+    /// <summary>
+    /// Ensures the Google <c>cmdline-tools</c> bundle is laid out at the
+    /// canonical <c>$SDK/cmdline-tools/latest/</c> path and returns the path
+    /// to the platform-appropriate <c>sdkmanager</c> launcher.
+    /// </summary>
+    private async Task<Result<string>> EnsureCmdlineTools(string sdkDir, ILogger logger)
+    {
+        var sdkmanagerName = OperatingSystem.IsWindows() ? "sdkmanager.bat" : "sdkmanager";
+        var sdkmanagerPath = IOPath.Combine(sdkDir, "cmdline-tools", "latest", "bin", sdkmanagerName);
+        if (File.Exists(sdkmanagerPath)) return Result.Success(sdkmanagerPath);
+
+        var url = OperatingSystem.IsWindows() ? CmdlineToolsWindows
+                : OperatingSystem.IsMacOS() ? CmdlineToolsMac
+                : CmdlineToolsLinux;
+
+        var stagingRoot = IOPath.Combine(sdkDir, "cmdline-tools");
+        Directory.CreateDirectory(stagingRoot);
+        var staging = IOPath.Combine(stagingRoot, $".staging-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(staging);
+        var zipPath = IOPath.Combine(staging, "cmdline-tools.zip");
+
+        try
+        {
+            logger.Information("Downloading Android command-line tools from {Url}", url);
+            using (var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+            await using (var src = await http.GetStreamAsync(url))
+            await using (var dst = File.Create(zipPath))
+            {
+                await src.CopyToAsync(dst);
+            }
+
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, staging, overwriteFiles: true);
+
+            // The zip contains a single top-level `cmdline-tools/` directory
+            // that we must rename to `latest/` for sdkmanager to be happy.
+            var extracted = IOPath.Combine(staging, "cmdline-tools");
+            if (!Directory.Exists(extracted))
+                return Result.Failure<string>(
+                    $"Unexpected cmdline-tools layout after extraction (no 'cmdline-tools/' inside {staging}).");
+
+            var dest = IOPath.Combine(stagingRoot, "latest");
+            if (Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+            Directory.Move(extracted, dest);
+
+            // Make sdkmanager executable on Unix (zip extraction loses bits).
+            if (!OperatingSystem.IsWindows())
+            {
+                var binDir = IOPath.Combine(dest, "bin");
+                if (Directory.Exists(binDir))
+                {
+                    foreach (var f in Directory.EnumerateFiles(binDir))
+                    {
+                        try { File.SetUnixFileMode(f, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                                                       | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                                                       | UnixFileMode.OtherRead | UnixFileMode.OtherExecute); }
+                        catch { /* best effort */ }
+                    }
+                }
+            }
+
+            if (!File.Exists(sdkmanagerPath))
+                return Result.Failure<string>($"sdkmanager not found at expected path {sdkmanagerPath} after extraction.");
+
+            return Result.Success(sdkmanagerPath);
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure<string>($"Failed to fetch Android cmdline-tools: {ex.Message}");
+        }
+        finally
+        {
+            try { Directory.Delete(staging, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>sdkmanager</c> with the appropriate JAVA_HOME and SDK root and
+    /// optionally pipes <paramref name="stdin"/> (used to accept all licenses
+    /// non-interactively). Stdout/stderr are captured and surfaced on failure.
+    /// </summary>
+    private static async Task<Result> RunSdkManager(
+        string sdkmanagerPath,
+        string jdkDir,
+        string sdkDir,
+        string args,
+        ILogger logger,
+        string? stdin = null)
+    {
+        var psi = new ProcessStartInfo(sdkmanagerPath, $"--sdk_root=\"{sdkDir}\" {args}")
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = stdin is not null,
+            CreateNoWindow = true,
+        };
+        psi.Environment["JAVA_HOME"] = jdkDir;
+        psi.Environment["ANDROID_HOME"] = sdkDir;
+        psi.Environment["ANDROID_SDK_ROOT"] = sdkDir;
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException($"Failed to start {sdkmanagerPath}");
+
+        if (stdin is not null)
+        {
+            await proc.StandardInput.WriteAsync(stdin);
+            await proc.StandardInput.FlushAsync();
+            proc.StandardInput.Close();
+        }
+
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+
+        if (proc.ExitCode == 0) return Result.Success();
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        var detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+        return Result.Failure($"sdkmanager exited with code {proc.ExitCode}: {detail.Trim()}");
+    }
+
+    /// <summary>
+    /// Reads the project's <c>TargetFramework</c> (e.g.
+    /// <c>net10.0-android35.0</c> or <c>net9.0-android</c>) and extracts the
+    /// Android API level. Returns null when not detectable.
+    /// </summary>
+    public static int? DetectAndroidApiLevel(string csprojPath)
+    {
+        try
+        {
+            var content = File.ReadAllText(csprojPath);
+
+            // Explicit override has top priority.
+            var spv = Regex.Match(content, @"<TargetPlatformVersion>\s*(\d+)\s*</TargetPlatformVersion>");
+            if (spv.Success && int.TryParse(spv.Groups[1].Value, out var explicitApi)) return explicitApi;
+
+            // net*-androidNN[.M]
+            var tfm = Regex.Match(content, @"<TargetFramework[^>]*>\s*net\d+(?:\.\d+)?-android(\d+)?(?:\.\d+)?\s*</TargetFramework");
+            if (tfm.Success && int.TryParse(tfm.Groups[1].Value, out var tfmApi)) return tfmApi;
+        }
+        catch
+        {
+            // Best effort.
+        }
+        return null;
     }
 
     private static string ResolveSdkDir()

@@ -46,4 +46,27 @@ public class AndroidPrerequisitesInstallerTests
     {
         Assert.False(AndroidPrerequisitesInstaller.PickAndroidHostProject([]).HasValue);
     }
+
+    [Theory]
+    [InlineData("<TargetFramework>net10.0-android36.0</TargetFramework>", 36)]
+    [InlineData("<TargetFramework>net9.0-android35</TargetFramework>", 35)]
+    [InlineData("<TargetFramework>net10.0-android</TargetFramework>", null)] // no API level encoded
+    [InlineData("<TargetFramework>net8.0</TargetFramework>", null)]
+    [InlineData("<TargetPlatformVersion>34</TargetPlatformVersion>", 34)]
+    public void DetectAndroidApiLevel_parses_supported_forms(string fragment, int? expected)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, $"<Project>{fragment}</Project>");
+            Assert.Equal(expected, AndroidPrerequisitesInstaller.DetectAndroidApiLevel(path));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void DetectAndroidApiLevel_returns_null_for_unreadable_file()
+    {
+        Assert.Null(AndroidPrerequisitesInstaller.DetectAndroidApiLevel("/nonexistent/path.csproj"));
+    }
 }
