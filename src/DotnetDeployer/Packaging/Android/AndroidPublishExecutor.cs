@@ -56,13 +56,93 @@ public sealed class AndroidPublishExecutor
             return Result.Failure(UnsupportedHostMessage());
         }
 
-        var native = await command.Execute(
-            "dotnet",
-            $"publish \"{projectPath}\" {publishArgs}",
-            workingDirectory);
-        return native.IsSuccess
+        var arguments = $"publish \"{projectPath}\" {publishArgs}";
+
+        var native = await command.Execute("dotnet", arguments, workingDirectory);
+        if (native.IsSuccess)
+        {
+            return Result.Success();
+        }
+
+        if (!IsTransientObjDirectoryRace(native.Error))
+        {
+            return Result.Failure(native.Error);
+        }
+
+        logger.Warning(
+            "Detected transient Xamarin.Android XARDF7024 race on obj/. Cleaning the Android obj subtree and retrying once. " +
+            "See https://github.com/dotnet/android/issues/10124.");
+
+        TryCleanAndroidObj(workingDirectory, publishArgs);
+
+        var retry = await command.Execute("dotnet", arguments, workingDirectory);
+        return retry.IsSuccess
             ? Result.Success()
-            : Result.Failure(native.Error);
+            : Result.Failure(retry.Error);
+    }
+
+    public static bool IsTransientObjDirectoryRace(string? error)
+    {
+        if (string.IsNullOrEmpty(error))
+        {
+            return false;
+        }
+
+        // Xamarin.Android RemoveDirFixed race: error XARDF7024 with "Directory not empty"
+        // pointing at an obj/.../android/... path. Both signals must be present to avoid
+        // false positives on unrelated IO failures.
+        return error.Contains("XARDF7024", StringComparison.Ordinal)
+               || (error.Contains("Directory not empty", StringComparison.OrdinalIgnoreCase)
+                   && error.Contains("RemoveDirFixed", StringComparison.Ordinal));
+    }
+
+    private void TryCleanAndroidObj(string workingDirectory, string publishArgs)
+    {
+        try
+        {
+            var tfm = ExtractTargetFramework(publishArgs);
+            var objRoot = Path.Combine(workingDirectory, "obj", "Release");
+
+            if (tfm is not null)
+            {
+                var tfmDir = Path.Combine(objRoot, tfm, "android");
+                if (Directory.Exists(tfmDir))
+                {
+                    logger.Debug("Removing {Path} before retry", tfmDir);
+                    Directory.Delete(tfmDir, recursive: true);
+                    return;
+                }
+            }
+
+            if (Directory.Exists(objRoot))
+            {
+                logger.Debug("Removing {Path} before retry (TFM not parseable)", objRoot);
+                Directory.Delete(objRoot, recursive: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Warning(ex, "Failed to clean Android obj subtree before retry; will retry anyway");
+        }
+    }
+
+    public static string? ExtractTargetFramework(string publishArgs)
+    {
+        if (string.IsNullOrWhiteSpace(publishArgs))
+        {
+            return null;
+        }
+
+        var tokens = publishArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < tokens.Length - 1; i++)
+        {
+            if (tokens[i] is "-f" or "--framework")
+            {
+                return tokens[i + 1].Trim('"');
+            }
+        }
+
+        return null;
     }
 
     internal static string UnsupportedHostMessage() =>
