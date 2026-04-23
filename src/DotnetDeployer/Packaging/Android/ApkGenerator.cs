@@ -54,6 +54,18 @@ public class ApkGenerator : IPackageGenerator
         var publishArgs = $"-c Release -f {targetFramework} {versionArgs} {signingArgs}";
         logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
         var executor = new AndroidPublishExecutor(command, logger);
+
+        // Capture the publish-start timestamp so we can detect stale APKs left over
+        // from a previous build. The .NET Android SDK does NOT treat
+        // -p:ApplicationVersion / -p:ApplicationDisplayVersion as inputs that
+        // invalidate the incremental build: if no Android source changed since the
+        // last build, MSBuild reuses the existing AndroidManifest.xml and signed
+        // APK and we'd silently copy that stale file as the new release artifact.
+        // We fail fast in that case (see check below). Subtract 5 s so a publish
+        // that legitimately produces an APK seconds before clock-skew tolerances
+        // doesn't trigger a false positive.
+        var publishStartedUtc = DateTime.UtcNow.AddSeconds(-5);
+
         var publishResult = await executor.Publish(projectPath, publishArgs, projectDir);
 
         if (publishResult.IsFailure)
@@ -101,6 +113,24 @@ public class ApkGenerator : IPackageGenerator
         }
 
         logger.Debug("Found APK: {Apk} in {Dir}", apkFiles[0], foundInDir);
+
+        // Stale-APK guard: the .NET Android SDK doesn't invalidate the incremental
+        // build when only -p:ApplicationVersion / -p:ApplicationDisplayVersion
+        // change, so a workspace polluted by a previous job (e.g. a DotnetFleet
+        // worker that didn't clean bin/) can leave us with a perfectly valid APK
+        // for the WRONG version. If the APK is older than when this publish
+        // started, the publish was a no-op and the APK is stale.
+        var apkLastWriteUtc = File.GetLastWriteTimeUtc(apkFiles[0]);
+        if (apkLastWriteUtc < publishStartedUtc)
+        {
+            return Result.Failure<GeneratedPackage>(
+                $"Stale APK detected: {apkFiles[0]} was last written at {apkLastWriteUtc:O} " +
+                $"but the publish started at {publishStartedUtc:O}. This usually means " +
+                $"MSBuild's incremental build reused a previous job's output (the .NET " +
+                $"Android SDK does not treat ApplicationVersion as an invalidating input). " +
+                $"Run the publish on a clean workspace (delete bin/ and obj/ for the " +
+                $"Android project, or use 'git clean -fdx').");
+        }
 
         // Use standardized naming
         var fileName = PackageNaming.GetFileName(metadata.GetDisplayName(), metadata.Version ?? "1.0.0", PackageType.Apk, arch);
