@@ -17,11 +17,13 @@ public class ApkGenerator : IPackageGenerator
 {
     private readonly ICommand command;
     private readonly AndroidSigningConfig? signingConfig;
+    private readonly IAndroidPublishProcessRunner? publishRunner;
 
-    public ApkGenerator(ICommand? command = null, AndroidSigningConfig? signingConfig = null)
+    public ApkGenerator(ICommand? command = null, AndroidSigningConfig? signingConfig = null, IAndroidPublishProcessRunner? publishRunner = null)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
         this.signingConfig = signingConfig;
+        this.publishRunner = publishRunner;
     }
 
     public PackageType Type => PackageType.Apk;
@@ -53,7 +55,7 @@ public class ApkGenerator : IPackageGenerator
         var signingArgs = signing.GetSigningArgs();
         var publishArgs = $"-c Release -f {targetFramework} {versionArgs} {signingArgs}";
         logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
-        var executor = new AndroidPublishExecutor(command, logger);
+        var executor = new AndroidPublishExecutor(logger, publishRunner);
 
         // Capture the publish-start timestamp so we can detect stale APKs left over
         // from a previous build. The .NET Android SDK does NOT treat

@@ -1,9 +1,6 @@
 using System.Runtime.InteropServices;
-using CSharpFunctionalExtensions;
 using DotnetDeployer.Packaging.Android;
 using Serilog;
-using Zafiro.Commands;
-using ICommand = Zafiro.Commands.ICommand;
 
 namespace DotnetDeployer.Tests.Platforms.Android;
 
@@ -59,12 +56,12 @@ public class AndroidPublishExecutorTests
 
         try
         {
-            var fake = new ScriptedCommand([
-                Result.Failure<string>("error XARDF7024: System.IO.IOException: Directory not empty\n   at Xamarin.Android.Tasks.RemoveDirFixed.RunTask()"),
-                Result.Success(string.Empty)
+            var fake = new ScriptedRunner([
+                new AndroidPublishProcessResult(1, "error XARDF7024: System.IO.IOException: Directory not empty\n   at Xamarin.Android.Tasks.RemoveDirFixed.RunTask()"),
+                new AndroidPublishProcessResult(0, string.Empty),
             ]);
 
-            var executor = new AndroidPublishExecutor(fake, new LoggerConfiguration().CreateLogger());
+            var executor = new AndroidPublishExecutor(new LoggerConfiguration().CreateLogger(), fake);
 
             var result = await executor.Publish(
                 "/some/project.csproj",
@@ -88,11 +85,11 @@ public class AndroidPublishExecutorTests
     [Fact]
     public async Task Publish_does_not_retry_on_unrelated_failures()
     {
-        var fake = new ScriptedCommand([
-            Result.Failure<string>("error CS0103: The name 'Foo' does not exist")
+        var fake = new ScriptedRunner([
+            new AndroidPublishProcessResult(1, "error CS0103: The name 'Foo' does not exist"),
         ]);
 
-        var executor = new AndroidPublishExecutor(fake, new LoggerConfiguration().CreateLogger());
+        var executor = new AndroidPublishExecutor(new LoggerConfiguration().CreateLogger(), fake);
 
         var result = await executor.Publish(
             "/some/project.csproj",
@@ -103,18 +100,38 @@ public class AndroidPublishExecutorTests
         Assert.Equal(1, fake.Calls);
     }
 
-    private sealed class ScriptedCommand : ICommand
+    [Fact]
+    public async Task Publish_treats_exit_code_zero_as_success_even_when_output_mentions_xardf7024()
     {
-        private readonly Queue<Result<string>> responses;
+        // Belt-and-braces: if a future SDK version self-recovers and still
+        // mentions the warning text in stdout, we must not retry on success.
+        var fake = new ScriptedRunner([
+            new AndroidPublishProcessResult(0, "warning XARDF7024: ignored after self-heal"),
+        ]);
 
-        public ScriptedCommand(IEnumerable<Result<string>> responses)
+        var executor = new AndroidPublishExecutor(new LoggerConfiguration().CreateLogger(), fake);
+
+        var result = await executor.Publish(
+            "/some/project.csproj",
+            "-c Release -f net10.0-android",
+            Path.GetTempPath());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, fake.Calls);
+    }
+
+    private sealed class ScriptedRunner : IAndroidPublishProcessRunner
+    {
+        private readonly Queue<AndroidPublishProcessResult> responses;
+
+        public ScriptedRunner(IEnumerable<AndroidPublishProcessResult> responses)
         {
-            this.responses = new Queue<Result<string>>(responses);
+            this.responses = new Queue<AndroidPublishProcessResult>(responses);
         }
 
         public int Calls { get; private set; }
 
-        public Task<Result<string>> Execute(string command, string arguments, string workingDirectory = "", Dictionary<string, string>? environmentVariables = null)
+        public Task<AndroidPublishProcessResult> Run(string fileName, string arguments, string workingDirectory)
         {
             Calls++;
             return Task.FromResult(responses.Dequeue());

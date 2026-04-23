@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using CSharpFunctionalExtensions;
 using Serilog;
-using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
 
 namespace DotnetDeployer.Packaging.Android;
@@ -23,13 +22,30 @@ namespace DotnetDeployer.Packaging.Android;
 /// </summary>
 public sealed class AndroidPublishExecutor
 {
-    private readonly ICommand command;
+    private readonly IAndroidPublishProcessRunner runner;
     private readonly ILogger logger;
 
+    /// <summary>
+    /// Production constructor used by APK/AAB generators. The
+    /// <see cref="ICommand"/> argument is accepted for API compatibility with
+    /// the rest of the deployer plumbing but ignored — Android publish needs
+    /// access to the captured stdout/stderr to detect the XARDF7024 race,
+    /// which the generic <see cref="ICommand"/> abstraction (only returns the
+    /// exit code on failure) cannot provide.
+    /// </summary>
     public AndroidPublishExecutor(ICommand? command, ILogger logger)
+        : this(logger, runner: null)
     {
-        this.command = command ?? new Command(Maybe<ILogger>.None);
+    }
+
+    /// <summary>
+    /// Test-friendly constructor. Pass a scripted <see cref="IAndroidPublishProcessRunner"/>
+    /// to drive the retry logic without spawning real processes.
+    /// </summary>
+    public AndroidPublishExecutor(ILogger logger, IAndroidPublishProcessRunner? runner)
+    {
         this.logger = logger;
+        this.runner = runner ?? new DefaultAndroidPublishProcessRunner(logger);
     }
 
     /// <summary>
@@ -50,15 +66,15 @@ public sealed class AndroidPublishExecutor
     {
         var arguments = $"publish \"{projectPath}\" {publishArgs}";
 
-        var native = await command.Execute("dotnet", arguments, workingDirectory);
-        if (native.IsSuccess)
+        var native = await runner.Run("dotnet", arguments, workingDirectory);
+        if (native.ExitCode == 0)
         {
             return Result.Success();
         }
 
-        if (!IsTransientObjDirectoryRace(native.Error))
+        if (!IsTransientObjDirectoryRace(native.CombinedOutput))
         {
-            return Result.Failure(native.Error);
+            return Result.Failure(FormatFailure(native));
         }
 
         logger.Warning(
@@ -67,10 +83,15 @@ public sealed class AndroidPublishExecutor
 
         TryCleanAndroidObj(workingDirectory, publishArgs);
 
-        var retry = await command.Execute("dotnet", arguments, workingDirectory);
-        return retry.IsSuccess
+        var retry = await runner.Run("dotnet", arguments, workingDirectory);
+        return retry.ExitCode == 0
             ? Result.Success()
-            : Result.Failure(retry.Error);
+            : Result.Failure(FormatFailure(retry));
+    }
+
+    private static string FormatFailure(AndroidPublishProcessResult result)
+    {
+        return $"Process failed with exit code {result.ExitCode}";
     }
 
     public static bool IsTransientObjDirectoryRace(string? error)

@@ -17,11 +17,13 @@ public class AabGenerator : IPackageGenerator
 {
     private readonly ICommand command;
     private readonly AndroidSigningConfig? signingConfig;
+    private readonly IAndroidPublishProcessRunner? publishRunner;
 
-    public AabGenerator(ICommand? command = null, AndroidSigningConfig? signingConfig = null)
+    public AabGenerator(ICommand? command = null, AndroidSigningConfig? signingConfig = null, IAndroidPublishProcessRunner? publishRunner = null)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
         this.signingConfig = signingConfig;
+        this.publishRunner = publishRunner;
     }
 
     public PackageType Type => PackageType.Aab;
@@ -53,7 +55,7 @@ public class AabGenerator : IPackageGenerator
         var signingArgs = signing.GetSigningArgs();
         var publishArgs = $"-c Release -f {targetFramework} -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}";
         logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
-        var executor = new AndroidPublishExecutor(command, logger);
+        var executor = new AndroidPublishExecutor(logger, publishRunner);
         var publishResult = await executor.Publish(projectPath, publishArgs, projectDir);
 
         if (publishResult.IsFailure)
