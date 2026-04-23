@@ -120,18 +120,28 @@ public class ApkGenerator : IPackageGenerator
         // build when only -p:ApplicationVersion / -p:ApplicationDisplayVersion
         // change, so a workspace polluted by a previous job (e.g. a DotnetFleet
         // worker that didn't clean bin/) can leave us with a perfectly valid APK
-        // for the WRONG version. If the APK is older than when this publish
-        // started, the publish was a no-op and the APK is stale.
+        // for the WRONG version.
+        //
+        // We can't compare the APK file's own mtime against publishStartedUtc:
+        // deterministic builds rewrite the APK file's mtime to a fixed epoch
+        // (typically 1980/1981, the ZIP DOS epoch) so a freshly produced APK
+        // looks ancient on disk. Instead we look at the *directory* mtime, which
+        // updates when MSBuild creates/renames the APK inside it but is unaffected
+        // by reproducible-build timestamp rewriting on the file content.
+        var apkDir = IOPath.GetDirectoryName(apkFiles[0])!;
+        var apkDirLastWriteUtc = Directory.GetLastWriteTimeUtc(apkDir);
         var apkLastWriteUtc = File.GetLastWriteTimeUtc(apkFiles[0]);
-        if (apkLastWriteUtc < publishStartedUtc)
+        var freshestSignalUtc = apkDirLastWriteUtc > apkLastWriteUtc ? apkDirLastWriteUtc : apkLastWriteUtc;
+        if (freshestSignalUtc < publishStartedUtc)
         {
             return Result.Failure<GeneratedPackage>(
                 $"Stale APK detected: {apkFiles[0]} was last written at {apkLastWriteUtc:O} " +
-                $"but the publish started at {publishStartedUtc:O}. This usually means " +
-                $"MSBuild's incremental build reused a previous job's output (the .NET " +
-                $"Android SDK does not treat ApplicationVersion as an invalidating input). " +
-                $"Run the publish on a clean workspace (delete bin/ and obj/ for the " +
-                $"Android project, or use 'git clean -fdx').");
+                $"and its directory at {apkDirLastWriteUtc:O}, but the publish started at " +
+                $"{publishStartedUtc:O}. This usually means MSBuild's incremental build " +
+                $"reused a previous job's output (the .NET Android SDK does not treat " +
+                $"ApplicationVersion as an invalidating input). Run the publish on a clean " +
+                $"workspace (delete bin/ and obj/ for the Android project, or use " +
+                $"'git clean -fdx').");
         }
 
         // Use standardized naming
