@@ -48,18 +48,15 @@ public class AndroidPrerequisitesInstaller
     /// MSBuild property lookups.</param>
     public async Task<Result> Ensure(string anyAndroidProject, ILogger logger)
     {
-        // On non-x64 Linux hosts the Android publish currently fails fast
-        // with a clear error in AndroidPublishExecutor (the workload pack's
-        // host helpers are x86_64-only). Skip host-side JDK/SDK provisioning
-        // here so the failure surfaces from a single, well-documented place.
-        // See docs/android-on-non-x64-linux.md.
-        if (AndroidPublishExecutor.IsHostUnsupported)
+        // On Linux/arm64 hosts, overlay arm64 shims onto every installed
+        // Microsoft.Android.Sdk.Linux pack before doing anything else. The
+        // workload pack ships aapt2/libMono.Unix.so/libZipSharpNative as
+        // x86_64-only and the overlay lets the rest of the publish pipeline
+        // run unmodified. No-op on x64 hosts.
+        var shimResult = await new AndroidArm64ShimInstaller(command, logger).EnsureAsync();
+        if (shimResult.IsFailure)
         {
-            logger.Warning(
-                "Host is Linux/{Arch} — Android publish is not supported here; skipping host-side JDK/SDK provisioning. " +
-                "The publish step will fail with a clear error.",
-                System.Runtime.InteropServices.RuntimeInformation.OSArchitecture);
-            return Result.Success();
+            return shimResult;
         }
 
         var sdkDir = ResolveSdkDir();

@@ -26,4 +26,8 @@
     <PackageReference Include="DotnetPackaging.Msix" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetDeployer.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -8,27 +8,18 @@ namespace DotnetDeployer.Packaging.Android;
 
 /// <summary>
 /// Routes <c>dotnet publish</c> for Android targets through the host's native
-/// SDK on x86_64 Linux/macOS/Windows. On non-x86_64 Linux hosts (Raspberry Pi,
-/// Apple Silicon Linux VMs, Ampere/Graviton CI runners…) the build is currently
-/// blocked because the <c>Microsoft.Android.Sdk.Linux</c> workload pack ships
-/// host binaries (<c>aapt2</c>, <c>libMono.Unix.so</c>,
-/// <c>libZipSharpNative-3-3.so</c>, the LLVM/binutils bundle) as x86_64 ELFs
-/// only.
-///
-/// TODO: lift this restriction once one of the following lands:
-///   • Microsoft publishes a linux-arm64 host build of
-///     <c>Microsoft.Android.Sdk.Linux</c>. Tracked upstream in
-///     https://github.com/dotnet/android/issues/11184.
-///   • The shim project at
-///     https://github.com/SuperJMN/DotnetAndroidArm64Shims is consumable
-///     end-to-end (provides arm64 builds of the missing host binaries plus a
-///     bootstrap that overlays them onto the installed pack).
+/// SDK. On Linux/arm64 hosts (Raspberry Pi, Apple Silicon Linux VMs,
+/// Ampere/Graviton CI runners…) the <c>Microsoft.Android.Sdk.Linux</c>
+/// workload pack ships some host binaries (<c>aapt2</c>,
+/// <c>libMono.Unix.so</c>, <c>libZipSharpNative-3-3.so</c>) as x86_64 ELFs
+/// only; arm64 replacements are overlaid by
+/// <see cref="AndroidArm64ShimInstaller"/>, invoked from
+/// <c>AndroidPrerequisitesInstaller</c> before publish.
 ///
 /// We deliberately do NOT route through a linux/amd64 container. qemu-user
 /// emulating amd64 on aarch64 cannot run the .NET runtime reliably (PLINQ ETW
 /// init failure and segfaults on plain <c>dotnet new console</c>, confirmed
-/// against qemu 5.2 and qemu 9.x), so containerization is a dead end until
-/// upstream changes.
+/// against qemu 5.2 and qemu 9.x), so containerization is a dead end.
 /// </summary>
 public sealed class AndroidPublishExecutor
 {
@@ -42,20 +33,21 @@ public sealed class AndroidPublishExecutor
     }
 
     /// <summary>
-    /// True when this host cannot currently run <c>dotnet publish</c> for
-    /// Android — i.e. Linux on a non-x86_64 architecture.
+    /// True when this host runs <c>dotnet publish</c> for Android directly
+    /// against the workload pack with no overlay (Windows, macOS, Linux/x64).
     /// </summary>
-    public static bool IsHostUnsupported { get; } =
-        RuntimeInformation.IsOSPlatform(OSPlatform.Linux) &&
-        RuntimeInformation.OSArchitecture != Architecture.X64;
+    public static bool IsHostNativelySupported { get; } =
+        !RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
+        RuntimeInformation.OSArchitecture == Architecture.X64;
+
+    /// <summary>
+    /// True when this host needs <see cref="AndroidArm64ShimInstaller"/> to
+    /// patch the workload pack before publish — i.e. Linux/arm64.
+    /// </summary>
+    public static bool IsHostShimmable => AndroidArm64ShimInstaller.IsApplicable;
 
     public async Task<Result> Publish(string projectPath, string publishArgs, string workingDirectory)
     {
-        if (IsHostUnsupported)
-        {
-            return Result.Failure(UnsupportedHostMessage());
-        }
-
         var arguments = $"publish \"{projectPath}\" {publishArgs}";
 
         var native = await command.Execute("dotnet", arguments, workingDirectory);
@@ -145,11 +137,4 @@ public sealed class AndroidPublishExecutor
         return null;
     }
 
-    internal static string UnsupportedHostMessage() =>
-        $"Android publish is not supported on Linux/{RuntimeInformation.OSArchitecture} hosts: " +
-        "Microsoft.Android.Sdk.Linux ships host binaries (aapt2, libMono.Unix.so, " +
-        "libZipSharpNative-3-3.so) as x86_64 ELFs only, and qemu-user emulation of the " +
-        ".NET SDK is not reliable enough to use as a workaround. " +
-        "Tracking a clean fix in https://github.com/SuperJMN/DotnetAndroidArm64Shims " +
-        "and upstream in https://github.com/dotnet/android/issues/11184.";
 }

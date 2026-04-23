@@ -1,6 +1,6 @@
 # Android publish on non-x64 Linux
 
-**Status: blocked / TODO.** Tracking a clean resolution rather than shipping a brittle workaround.
+**Status: works via shim overlay on Linux/arm64.** Other non-x64 Linux architectures (armhf, riscv64…) remain unsupported.
 
 ## What does and doesn't work today
 
@@ -9,37 +9,31 @@
 | Linux x86_64 | Works natively |
 | Windows x86_64 | Works natively |
 | macOS (Intel + Apple Silicon) | Works natively |
-| **Linux arm64** (Raspberry Pi, Ampere/Graviton, Linux VMs on Apple Silicon) | **Fails fast** with a clear error from `AndroidPublishExecutor` |
+| **Linux arm64** (Raspberry Pi, Ampere/Graviton, Linux VMs on Apple Silicon) | **Works via shim overlay** (see below) |
+| Linux on any other non-x64 architecture | Fails — no shim available |
 
-If a Fleet worker on Linux/arm64 picks up an Android-targeted job, DotnetDeployer aborts that target with a message pointing at the two tracking issues (see below). Other targets (desktop deb, Windows setup exe, NuGet packages) for the same project are unaffected and continue to publish.
+When a Fleet worker on Linux/arm64 picks up an Android-targeted job, `AndroidPrerequisitesInstaller` invokes the bootstrap script from [`SuperJMN/DotnetAndroidArm64Shims`](https://github.com/SuperJMN/DotnetAndroidArm64Shims) once per process, before doing anything else. The script is idempotent: it scans `~/.dotnet/packs/Microsoft.Android.Sdk.Linux/`, downloads the release tarball matching each installed pack version, verifies SHA256 sums, backs up the originals, and overlays the arm64 builds. Re-runs are no-ops.
 
-## Why we can't just route through a container
+After the overlay, the rest of the publish pipeline (JDK/SDK provisioning, `dotnet publish`, signing) runs unmodified. Validated on a Raspberry Pi 4 with a vanilla `dotnet new android` template against shim release `36.1.53`: signed APK in ~3m40s, installed and launched on a real Pixel device.
+
+If the installed `Microsoft.Android.Sdk.Linux` pack version has no matching shim release, `EnsureAsync()` returns an actionable failure pointing at <https://github.com/SuperJMN/DotnetAndroidArm64Shims/releases>. Other targets in the same project (NuGet, deb, etc.) keep deploying.
+
+## Why we don't route through a container (post-mortem)
 
 The first instinct is "spin up a `linux/amd64` container with `qemu-user-static`, run `dotnet publish` inside, mount the result back". Tried it; doesn't work.
 
 `qemu-user` emulating amd64 on aarch64 cannot run the .NET runtime reliably. Even a trivial `dotnet new console` segfaults inside `mcr.microsoft.com/dotnet/sdk:10.0` under `linux/amd64`. The PLINQ ETW provider initialization throws on startup; threading-heavy paths abort with SIGSEGV. Confirmed empirically with both Debian's qemu-user-static 5.2 and `tonistiigi/binfmt`'s qemu 9.x, on a Raspberry Pi 4 running Raspberry Pi OS 64-bit (kernel 6.x).
 
-This isn't something a flag fixes — the .NET runtime makes assumptions about signal handling and futex semantics that qemu-user doesn't honour. It's a known class of bugs in the dotnet/runtime tracker.
+This isn't something a flag fixes — the .NET runtime makes assumptions about signal handling and futex semantics that qemu-user doesn't honour. It's a known class of bugs in the dotnet/runtime tracker. Kept here as historical context for "why we don't containerize".
 
-## Why we can't just patch the SDK pack on disk
+## Why we don't reimplement the overlay in C#
 
-The `Microsoft.Android.Sdk.Linux` workload pack ships these binaries as **x86_64 ELFs only** — they're invoked from MSBuild tasks running inside the native arm64 dotnet process, so they have to be replaceable with arm64 builds:
+We deliberately invoke `install-shims.sh` over `curl | bash` instead of downloading the tarball directly from C#:
 
-- `tools/Linux/aapt2`
-- `tools/libMono.Unix.so`
-- `tools/libZipSharpNative-3-3.so`
-- `tools/Linux/binutils/bin/{as,ld,llc,llvm-mc,llvm-objcopy,llvm-strip}` and friends (only needed for AOT)
+- The bootstrap script is the **stable contract**. Its internals (release discovery, SHA256 verification, pack-version → tarball mapping, backup of originals) will evolve.
+- Keeping the overlay logic in the shim repo lets it ship its own release cadence, CI and tests, separate from DotnetDeployer.
+- `aapt2` has strict version-match against the pack (`error XA0111: Unsupported version of AAPT2`), and Microsoft bumps it on a roughly monthly cadence. Centralising the version-matrix logic in one place avoids drift.
 
-We *could* build arm64 replacements ourselves and overlay them onto the pack. That's a real project — see [`SuperJMN/DotnetAndroidArm64Shims`](https://github.com/SuperJMN/DotnetAndroidArm64Shims). It's deliberately kept out of DotnetDeployer because:
+## How this gets fully resolved upstream
 
-- The maintenance burden is non-trivial (`aapt2` has strict version-match against the pack, and Microsoft bumps it monthly — `error XA0111: Unsupported version of AAPT2`).
-- It deserves its own release cadence, CI, and test surface separate from the deployer.
-
-## How this gets unblocked
-
-Either of these closes the gap:
-
-1. **Upstream provides linux-arm64 builds.** Asked here: <https://github.com/dotnet/android/issues/11184>. If accepted, the pack just works on arm64 and we delete the short-circuit in `AndroidPublishExecutor`.
-2. **`DotnetAndroidArm64Shims` ships v1.** Then DotnetDeployer's `AndroidPrerequisitesInstaller` invokes its bootstrap to overlay the shim binaries before publish, and `AndroidPublishExecutor` lets the publish proceed natively.
-
-Whichever lands first wins. Until then: clear failure with actionable links, no silent fallbacks, no half-working containerized path.
+If Microsoft ships a linux-arm64 host build of `Microsoft.Android.Sdk.Linux`, the shim overlay becomes redundant: the bootstrap script's release set goes empty and the call becomes a true no-op, with no changes needed in DotnetDeployer. Tracked upstream in <https://github.com/dotnet/android/issues/11184>.

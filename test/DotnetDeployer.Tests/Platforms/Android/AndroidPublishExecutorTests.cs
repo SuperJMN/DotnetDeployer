@@ -10,24 +10,21 @@ namespace DotnetDeployer.Tests.Platforms.Android;
 public class AndroidPublishExecutorTests
 {
     [Fact]
-    public void IsHostUnsupported_matches_runtime_arch()
+    public void IsHostNativelySupported_matches_runtime_arch()
     {
-        var expected = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                       && RuntimeInformation.OSArchitecture != Architecture.X64;
+        var expected = !RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                       || RuntimeInformation.OSArchitecture == Architecture.X64;
 
-        Assert.Equal(expected, AndroidPublishExecutor.IsHostUnsupported);
+        Assert.Equal(expected, AndroidPublishExecutor.IsHostNativelySupported);
     }
 
     [Fact]
-    public void UnsupportedHostMessage_points_users_to_the_tracking_repo_and_upstream_issue()
+    public void IsHostShimmable_matches_linux_arm64()
     {
-        var msg = typeof(AndroidPublishExecutor)
-            .GetMethod("UnsupportedHostMessage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
-            .Invoke(null, null) as string;
+        var expected = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                       && RuntimeInformation.OSArchitecture == Architecture.Arm64;
 
-        Assert.NotNull(msg);
-        Assert.Contains("DotnetAndroidArm64Shims", msg);
-        Assert.Contains("dotnet/android/issues/11184", msg);
+        Assert.Equal(expected, AndroidPublishExecutor.IsHostShimmable);
     }
 
     [Theory]
@@ -55,11 +52,6 @@ public class AndroidPublishExecutorTests
     [Fact]
     public async Task Publish_retries_once_on_xardf7024_and_succeeds()
     {
-        if (AndroidPublishExecutor.IsHostUnsupported)
-        {
-            return;
-        }
-
         var workingDir = Path.Combine(Path.GetTempPath(), $"deployer-test-{Guid.NewGuid():N}");
         var staleObj = Path.Combine(workingDir, "obj", "Release", "net10.0-android", "android", "assets", "arm64-v8a");
         Directory.CreateDirectory(staleObj);
@@ -96,11 +88,6 @@ public class AndroidPublishExecutorTests
     [Fact]
     public async Task Publish_does_not_retry_on_unrelated_failures()
     {
-        if (AndroidPublishExecutor.IsHostUnsupported)
-        {
-            return;
-        }
-
         var fake = new ScriptedCommand([
             Result.Failure<string>("error CS0103: The name 'Foo' does not exist")
         ]);
