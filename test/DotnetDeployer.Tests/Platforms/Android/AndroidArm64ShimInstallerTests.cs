@@ -49,7 +49,8 @@ public class AndroidArm64ShimInstallerTests
         AndroidArm64ShimInstaller.ResetForTests();
 
         var fake = new ScriptedCommand([Result.Success(string.Empty)]);
-        var installer = new AndroidArm64ShimInstaller(fake, new LoggerConfiguration().CreateLogger());
+        var llvm = new StubLlvmRootProvider(Result.Success("/opt/llvm"));
+        var installer = new AndroidArm64ShimInstaller(fake, new LoggerConfiguration().CreateLogger(), llvm);
 
         var first = await installer.EnsureAsync();
         var second = await installer.EnsureAsync();
@@ -60,6 +61,27 @@ public class AndroidArm64ShimInstallerTests
         Assert.Equal("bash", fake.LastCommand);
         Assert.Contains("DotnetAndroidArm64Shims", fake.LastArguments);
         Assert.Contains("install-shims.sh", fake.LastArguments);
+        Assert.Contains("--llvm-root '/opt/llvm'", fake.LastArguments);
+    }
+
+    [Fact]
+    public async Task EnsureAsync_runs_bootstrap_without_llvm_root_when_provider_fails()
+    {
+        if (!AndroidArm64ShimInstaller.IsApplicable)
+        {
+            return;
+        }
+
+        AndroidArm64ShimInstaller.ResetForTests();
+
+        var fake = new ScriptedCommand([Result.Success(string.Empty)]);
+        var llvm = new StubLlvmRootProvider(Result.Failure<string>("nope"));
+        var installer = new AndroidArm64ShimInstaller(fake, new LoggerConfiguration().CreateLogger(), llvm);
+
+        var result = await installer.EnsureAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("--llvm-root", fake.LastArguments);
     }
 
     [Fact]
@@ -73,7 +95,8 @@ public class AndroidArm64ShimInstallerTests
         AndroidArm64ShimInstaller.ResetForTests();
 
         var fake = new ScriptedCommand([Result.Failure<string>("curl: (22) The requested URL returned error: 404")]);
-        var installer = new AndroidArm64ShimInstaller(fake, new LoggerConfiguration().CreateLogger());
+        var llvm = new StubLlvmRootProvider(Result.Success("/opt/llvm"));
+        var installer = new AndroidArm64ShimInstaller(fake, new LoggerConfiguration().CreateLogger(), llvm);
 
         var result = await installer.EnsureAsync();
 
@@ -83,11 +106,24 @@ public class AndroidArm64ShimInstallerTests
 
         // Failed install must NOT be memoized — a retry should run bash again.
         var fakeRetry = new ScriptedCommand([Result.Success(string.Empty)]);
-        var installerRetry = new AndroidArm64ShimInstaller(fakeRetry, new LoggerConfiguration().CreateLogger());
+        var llvmRetry = new StubLlvmRootProvider(Result.Success("/opt/llvm"));
+        var installerRetry = new AndroidArm64ShimInstaller(fakeRetry, new LoggerConfiguration().CreateLogger(), llvmRetry);
         var retry = await installerRetry.EnsureAsync();
 
         Assert.True(retry.IsSuccess);
         Assert.Equal(1, fakeRetry.Calls);
+    }
+
+    private sealed class StubLlvmRootProvider : ILlvmRootProvider
+    {
+        private readonly Result<string> response;
+
+        public StubLlvmRootProvider(Result<string> response)
+        {
+            this.response = response;
+        }
+
+        public Task<Result<string>> EnsureAsync(ILogger logger) => Task.FromResult(response);
     }
 
     private sealed class ScriptedCommand : ICommand

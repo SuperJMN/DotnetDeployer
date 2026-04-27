@@ -32,11 +32,18 @@ public sealed class AndroidArm64ShimInstaller
 
     private readonly ICommand command;
     private readonly ILogger logger;
+    private readonly ILlvmRootProvider llvmRootProvider;
 
     public AndroidArm64ShimInstaller(ICommand? command, ILogger logger)
+        : this(command, logger, llvmRootProvider: null)
+    {
+    }
+
+    internal AndroidArm64ShimInstaller(ICommand? command, ILogger logger, ILlvmRootProvider? llvmRootProvider)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
         this.logger = logger;
+        this.llvmRootProvider = llvmRootProvider ?? new LlvmPortableInstaller(this.command);
     }
 
     /// <summary>
@@ -71,14 +78,31 @@ public sealed class AndroidArm64ShimInstaller
             logger.Information(
                 "Installing linux-arm64 Android SDK shims from SuperJMN/DotnetAndroidArm64Shims");
 
+            // Provision a portable LLVM toolchain so the binutils overlay
+            // step inside install-shims.sh doesn't depend on system packages
+            // (apt llvm-N / dnf llvm). Falls back to a pre-existing system
+            // LLVM if found, so existing setups keep working unchanged.
+            var llvmResult = await llvmRootProvider.EnsureAsync(logger);
+            if (llvmResult.IsFailure)
+            {
+                logger.Warning(
+                    "Could not provision a portable LLVM ({Error}). Falling back to whatever the host script can detect.",
+                    llvmResult.Error);
+            }
+
+            var llvmRootArg = llvmResult.IsSuccess
+                ? $" -s -- --llvm-root '{llvmResult.Value}'"
+                : string.Empty;
+
             // The script is idempotent. Piping curl into bash keeps the
             // contract zero-deps for consumers (curl + bash are universally
             // present on Linux). `set -o pipefail` ensures a failed curl
             // surfaces as a non-zero exit instead of being masked by bash's
-            // exit code.
+            // exit code. We pass --llvm-root via `bash -s --` so the script
+            // sees it as $1+ even when invoked through a pipe.
             var result = await command.Execute(
                 "bash",
-                $"-c \"set -o pipefail; curl -fsSL {BootstrapUrl} | bash\"",
+                $"-c \"set -o pipefail; curl -fsSL {BootstrapUrl} | bash{llvmRootArg}\"",
                 Environment.CurrentDirectory);
 
             if (result.IsFailure)
