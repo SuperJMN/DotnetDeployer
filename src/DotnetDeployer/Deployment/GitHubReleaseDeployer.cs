@@ -115,6 +115,8 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
                         await tcs.Task;
                         ms.Position = 0;
+                        var sizeBytes = ms.Length;
+                        uploadPhase.AddEndAttribute("size_bytes", sizeBytes);
 
                         var assetUpload = new ReleaseAssetUpload
                         {
@@ -125,7 +127,6 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
                         var asset = await client.Repository.Release.UploadAsset(release, assetUpload);
                         uploadedCount++;
-                        uploadPhase.AddEndAttribute("size_bytes", ms.Length);
                         logger.Information("Uploaded {FileName}: {Url}", package.FileName, asset.BrowserDownloadUrl);
                     }
                     catch
