@@ -26,6 +26,7 @@ public class DeploymentOrchestrator
     private readonly GitVersionService gitVersionService;
     private readonly Packaging.Android.AndroidPrerequisitesInstaller androidPrerequisites;
     private readonly ICommand command;
+    private readonly IPhaseReporter phases;
 
     public DeploymentOrchestrator(
         ILogger? logger = null,
@@ -37,7 +38,8 @@ public class DeploymentOrchestrator
         IGitHubReleaseDeployer? githubDeployer = null,
         IGitHubPagesDeployer? githubPagesDeployer = null,
         GitVersionService? gitVersionService = null,
-        Packaging.Android.AndroidPrerequisitesInstaller? androidPrerequisites = null)
+        Packaging.Android.AndroidPrerequisitesInstaller? androidPrerequisites = null,
+        IPhaseReporter? phaseReporter = null)
     {
         var cmd = command ?? new Command(Maybe.From(logger));
 
@@ -46,7 +48,8 @@ public class DeploymentOrchestrator
         this.metadataExtractor = metadataExtractor ?? new MsbuildMetadataExtractor();
         this.generatorFactory = generatorFactory ?? new PackageGeneratorFactory(cmd);
         this.nugetDeployer = nugetDeployer ?? new NuGetDeployer(cmd);
-        this.githubDeployer = githubDeployer ?? new GitHubReleaseDeployer();
+        this.phases = phaseReporter ?? NullPhaseReporter.Instance;
+        this.githubDeployer = githubDeployer ?? new GitHubReleaseDeployer(this.phases);
         this.githubPagesDeployer = githubPagesDeployer ?? new GitHubPagesDeployer(cmd);
         this.gitVersionService = gitVersionService ?? new GitVersionService(cmd);
         this.androidPrerequisites = androidPrerequisites ?? new Packaging.Android.AndroidPrerequisitesInstaller(cmd);
@@ -54,6 +57,7 @@ public class DeploymentOrchestrator
 
     public async Task<Result> Run(string configPath, DeployOptions options, ILogger logger)
     {
+        phases.Info("meta.protocol", "1");
         logger.Information("Starting deployment from {ConfigPath}", configPath);
 
         return await configReader.Read(configPath)
@@ -63,7 +67,11 @@ public class DeploymentOrchestrator
                 var errors = new List<string>();
 
                 // Determine effective version early for logging and CI build naming
-                var version = await DetermineVersion(configDir, options, logger);
+                string version;
+                using (phases.BeginPhase("version.resolve"))
+                {
+                    version = await DetermineVersion(configDir, options, logger);
+                }
                 logger.Information("Effective version: {Version}", version);
 
                 // Emit Azure Pipelines build naming command (##vso pattern)
@@ -80,10 +88,13 @@ public class DeploymentOrchestrator
                 var solutionPath = FindSolution(configDir);
                 if (solutionPath.HasValue)
                 {
+                    using var workloadPhase = phases.BeginPhase("workload.restore",
+                        ("solution", Path.GetFileName(solutionPath.Value)));
                     logger.Information("Restoring workloads...");
                     var workloadResult = await command.Execute("dotnet", $"workload restore \"{solutionPath.Value}\"", configDir);
                     if (workloadResult.IsFailure)
                     {
+                        workloadPhase.MarkFailure();
                         logger.Warning("Workload restore failed (may not be needed): {Error}", workloadResult.Error);
                     }
                 }
@@ -96,9 +107,11 @@ public class DeploymentOrchestrator
                 if (androidProjects.Count > 0)
                 {
                     var anyAndroidProj = androidProjects[0];
+                    using var androidPhase = phases.BeginPhase("android.prereqs");
                     var androidResult = await androidPrerequisites.Ensure(anyAndroidProj, logger);
                     if (androidResult.IsFailure)
                     {
+                        androidPhase.MarkFailure();
                         errors.Add($"Android prerequisites: {androidResult.Error}");
                     }
                 }
@@ -108,6 +121,8 @@ public class DeploymentOrchestrator
                 {
                     if (solutionPath.HasValue)
                     {
+                        using var nugetPhase = phases.BeginPhase("nuget.deploy",
+                            ("source", config.NuGet.Source ?? ""));
                         var nugetResult = await nugetDeployer.Deploy(
                             solutionPath.Value,
                             config.NuGet,
@@ -117,6 +132,7 @@ public class DeploymentOrchestrator
 
                         if (nugetResult.IsFailure)
                         {
+                            nugetPhase.MarkFailure();
                             errors.Add($"NuGet deployment failed: {nugetResult.Error}");
                         }
                     }
@@ -129,9 +145,14 @@ public class DeploymentOrchestrator
                 // GitHub release deployment
                 if (config.GitHub?.Enabled == true)
                 {
+                    using var githubPhase = phases.BeginPhase("github.deploy",
+                        ("owner", config.GitHub.Owner ?? ""),
+                        ("repo", config.GitHub.Repo ?? ""),
+                        ("version", version));
                     var githubResult = await DeployGitHub(config.GitHub, configDir, options, logger);
                     if (githubResult.IsFailure)
                     {
+                        githubPhase.MarkFailure();
                         errors.Add($"GitHub deployment failed: {githubResult.Error}");
                     }
                 }
@@ -139,9 +160,13 @@ public class DeploymentOrchestrator
                 // GitHub Pages deployment
                 if (config.GitHubPages?.Enabled == true)
                 {
+                    using var pagesPhase = phases.BeginPhase("github.pages.deploy",
+                        ("owner", config.GitHubPages.Owner ?? ""),
+                        ("repo", config.GitHubPages.Repo ?? ""));
                     var pagesResult = await githubPagesDeployer.Deploy(config.GitHubPages, options.DryRun, configDir, logger);
                     if (pagesResult.IsFailure)
                     {
+                        pagesPhase.MarkFailure();
                         errors.Add($"GitHub Pages deployment failed: {pagesResult.Error}");
                     }
                 }
@@ -251,14 +276,24 @@ public class DeploymentOrchestrator
                     {
                         logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
 
+                        var phaseName = $"package.generate.{packageType.ToString().ToLowerInvariant()}.{arch.ToString().ToLowerInvariant()}";
+                        var pkgPhase = phases.BeginPhase(phaseName,
+                            ("project", metadata.AssemblyName ?? ""),
+                            ("type", packageType.ToString()),
+                            ("arch", arch.ToString()));
+
                         var result = await generator.Generate(projectPath, arch, metadata, outputDir, logger);
 
                         if (result.IsSuccess)
                         {
+                            pkgPhase.AddEndAttribute("file", result.Value.FileName);
+                            pkgPhase.Dispose();
                             yield return result.Value;
                         }
                         else
                         {
+                            pkgPhase.MarkFailure();
+                            pkgPhase.Dispose();
                             logger.Error("Failed to generate {Type} ({Arch}): {Error}", packageType, arch, result.Error);
                         }
                     }

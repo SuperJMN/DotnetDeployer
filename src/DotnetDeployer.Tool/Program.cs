@@ -48,7 +48,8 @@ public static class Program
             var dryRun = parseResult.GetValue(dryRunOption);
             var version = parseResult.GetValue(versionOption);
 
-            var orchestrator = new DeploymentOrchestrator(Log.Logger);
+            var phaseReporter = new ConsolePhaseReporter(logger: Log.Logger);
+            var orchestrator = new DeploymentOrchestrator(Log.Logger, phaseReporter: phaseReporter);
             var options = new DeployOptions
             {
                 DryRun = dryRun,

@@ -3,6 +3,7 @@ using DotnetDeployer.Configuration;
 using DotnetDeployer.Configuration.Secrets;
 using DotnetDeployer.Configuration.Signing;
 using DotnetDeployer.Domain;
+using DotnetDeployer.Orchestration;
 using Octokit;
 using Serilog;
 using DeployerPackageType = DotnetDeployer.Domain.PackageType;
@@ -14,6 +15,13 @@ namespace DotnetDeployer.Deployment;
 /// </summary>
 public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 {
+    private readonly IPhaseReporter phases;
+
+    public GitHubReleaseDeployer(IPhaseReporter? phaseReporter = null)
+    {
+        this.phases = phaseReporter ?? NullPhaseReporter.Instance;
+    }
+
     public async Task<Result> Deploy(
         GitHubConfig config,
         string version,
@@ -73,7 +81,14 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
             await EnsureNoExistingRelease(client, config, tagName, logger);
 
             logger.Debug("Creating release {Tag}", tagName);
-            var release = await client.Repository.Release.Create(config.Owner, config.Repo, releaseRequest);
+            Release release;
+            using (phases.BeginPhase("github.release.create",
+                       ("owner", config.Owner ?? ""),
+                       ("repo", config.Repo ?? ""),
+                       ("tag", tagName)))
+            {
+                release = await client.Repository.Release.Create(config.Owner, config.Repo, releaseRequest);
+            }
             logger.Information("Created release: {Url}", release.HtmlUrl);
 
             // Upload packages as they are generated, tracking count for validation
@@ -83,6 +98,8 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
             {
                 await foreach (var package in packages)
                 {
+                    var uploadPhase = phases.BeginPhase("github.release.upload",
+                        ("asset", package.FileName));
                     try
                     {
                         logger.Information("Uploading {FileName}...", package.FileName);
@@ -108,10 +125,17 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
 
                         var asset = await client.Repository.Release.UploadAsset(release, assetUpload);
                         uploadedCount++;
+                        uploadPhase.AddEndAttribute("size_bytes", ms.Length);
                         logger.Information("Uploaded {FileName}: {Url}", package.FileName, asset.BrowserDownloadUrl);
+                    }
+                    catch
+                    {
+                        uploadPhase.MarkFailure();
+                        throw;
                     }
                     finally
                     {
+                        uploadPhase.Dispose();
                         package.Dispose();
                     }
                 }
