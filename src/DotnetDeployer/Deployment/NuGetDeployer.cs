@@ -2,6 +2,8 @@ using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
 using DotnetDeployer.Configuration.Secrets;
 using DotnetDeployer.Configuration.Signing;
+using DotnetDeployer.Packaging;
+using DotnetDeployer.Versioning;
 using Serilog;
 using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
@@ -14,10 +16,12 @@ namespace DotnetDeployer.Deployment;
 public class NuGetDeployer : INuGetDeployer
 {
     private readonly ICommand command;
+    private readonly ChangelogService changelogService;
 
-    public NuGetDeployer(ICommand? command = null)
+    public NuGetDeployer(ICommand? command = null, ChangelogService? changelogService = null)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
+        this.changelogService = changelogService ?? new ChangelogService(this.command);
     }
 
     public async Task<Result> Deploy(string solutionPath, NuGetConfig config, string version, bool dryRun, ILogger logger)
@@ -83,6 +87,29 @@ public class NuGetDeployer : INuGetDeployer
             }
 
             logger.Information("Found {Count} packages to deploy", packages.Length);
+
+            var changelogResult = await changelogService.GetChangelog(solutionDir, version, logger);
+            string? changelog = null;
+            if (changelogResult.IsSuccess)
+            {
+                changelog = changelogResult.Value;
+                foreach (var package in packages)
+                {
+                    var injectResult = NupkgReadmeInjector.Inject(package, changelog, logger);
+                    if (injectResult.IsFailure)
+                    {
+                        logger.Warning("Could not inject README into {Package}: {Error}", Path.GetFileName(package), injectResult.Error);
+                    }
+                    else
+                    {
+                        logger.Debug("Injected changelog README into {Package}", Path.GetFileName(package));
+                    }
+                }
+            }
+            else
+            {
+                logger.Warning("Skipping README injection: {Error}", changelogResult.Error);
+            }
 
             foreach (var package in packages)
             {

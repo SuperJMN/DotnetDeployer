@@ -37,6 +37,8 @@ nuget:
 version: 1
 
 # NuGet deployment - packs and pushes all packable projects
+# Each generated .nupkg automatically includes a README.md with a
+# changelog of git commits between the previous tag and HEAD.
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
