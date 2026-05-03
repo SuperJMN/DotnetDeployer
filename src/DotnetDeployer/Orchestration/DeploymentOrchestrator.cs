@@ -84,6 +84,21 @@ public class DeploymentOrchestrator
                     config.GitHub?.Enabled ?? false);
                 logger.Debug("GitHub packages count: {Count}", config.GitHub?.Packages?.Count ?? 0);
 
+                GitHubConfig? packageOnlyConfig = null;
+                if (options.PackageOnly)
+                {
+                    var packageConfigResult = PackageOnlyConfigBuilder.Build(
+                        config.GitHub,
+                        options.PackageProject,
+                        options.PackageTargets,
+                        options.OutputDirOverride);
+
+                    if (packageConfigResult.IsFailure)
+                        return Result.Failure(packageConfigResult.Error);
+
+                    packageOnlyConfig = packageConfigResult.Value;
+                }
+
                 // Restore workloads if needed (android, wasm-tools, etc.)
                 var solutionPath = FindSolution(configDir);
                 if (solutionPath.HasValue)
@@ -103,7 +118,10 @@ public class DeploymentOrchestrator
                 // The `android` workload only ships .NET-side bits; the actual
                 // Android SDK (aapt2, build-tools, platforms…) must be installed
                 // separately via the InstallAndroidDependencies MSBuild target.
-                var androidProjects = CollectAndroidProjectPaths(config, configDir);
+                var effectiveConfig = options.PackageOnly
+                    ? new DeployerConfig { GitHub = packageOnlyConfig }
+                    : config;
+                var androidProjects = CollectAndroidProjectPaths(effectiveConfig, configDir);
                 if (androidProjects.Count > 0)
                 {
                     var anyAndroidProj = androidProjects[0];
@@ -114,6 +132,11 @@ public class DeploymentOrchestrator
                         androidPhase.MarkFailure();
                         errors.Add($"Android prerequisites: {androidResult.Error}");
                     }
+                }
+
+                if (options.PackageOnly)
+                {
+                    return await GeneratePackagesOnly(packageOnlyConfig!, configDir, version, logger);
                 }
 
                 // NuGet deployment
@@ -215,6 +238,25 @@ public class DeploymentOrchestrator
         var packages = GeneratePackages(config, configDir, version, logger);
 
         return await githubDeployer.Deploy(config, version, packages, options.DryRun, logger);
+    }
+
+    private async Task<Result> GeneratePackagesOnly(
+        GitHubConfig config,
+        string configDir,
+        string version,
+        ILogger logger)
+    {
+        var count = 0;
+        await foreach (var package in GeneratePackages(config, configDir, version, logger))
+        {
+            count++;
+            logger.Information("Generated package: {FileName}", package.FileName);
+            package.Dispose();
+        }
+
+        return count == 0
+            ? Result.Failure("No packages were generated.")
+            : Result.Success();
     }
 
     private async IAsyncEnumerable<GeneratedPackage> GeneratePackages(

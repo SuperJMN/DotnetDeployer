@@ -106,6 +106,20 @@ githubPages:
 | `--config`, `-c` | Path to deployer.yaml (default: `deployer.yaml`) |
 | `--dry-run`, `-n` | Simulate deployment without making changes |
 | `--release-version`, `-v` | Override version for the release |
+| `--package-only` | Generate packages without publishing NuGet, GitHub Releases, or GitHub Pages |
+| `--package-project` | Select one `github.packages[].project` entry when the YAML has multiple package projects |
+| `--package-target` | Generate a target in `<type>:<arch>` form, e.g. `exe-setup:x64`; can be repeated |
+| `--output-dir` | Override the directory where generated packages are written |
+
+Generate only selected packages:
+
+```bash
+dotnetdeployer --package-only \
+  --package-project src/MyApp.Desktop/MyApp.Desktop.csproj \
+  --package-target exe-setup:x64 \
+  --package-target msix:x64 \
+  --output-dir artifacts/manual-build
+```
 
 ---
 

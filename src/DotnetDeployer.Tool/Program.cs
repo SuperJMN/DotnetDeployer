@@ -35,10 +35,35 @@ public static class Program
             Description = "Override version for the release"
         };
 
+        var packageOnlyOption = new Option<bool>("--package-only")
+        {
+            Description = "Generate packages only; do not publish NuGet, GitHub Releases, or GitHub Pages"
+        };
+
+        var packageProjectOption = new Option<string?>("--package-project")
+        {
+            Description = "Project entry from github.packages to package"
+        };
+
+        var packageTargetOption = new Option<string[]>("--package-target")
+        {
+            Description = "Package target in '<type>:<architecture>' form, e.g. exe-setup:x64. Can be repeated."
+        };
+        packageTargetOption.AllowMultipleArgumentsPerToken = true;
+
+        var outputDirOption = new Option<DirectoryInfo?>("--output-dir")
+        {
+            Description = "Directory where generated packages should be written"
+        };
+
         var rootCommand = new RootCommand("DotnetDeployer - Deploy .NET projects to NuGet and GitHub");
         rootCommand.Add(configOption);
         rootCommand.Add(dryRunOption);
         rootCommand.Add(versionOption);
+        rootCommand.Add(packageOnlyOption);
+        rootCommand.Add(packageProjectOption);
+        rootCommand.Add(packageTargetOption);
+        rootCommand.Add(outputDirOption);
 
         var exitCode = 0;
 
@@ -47,13 +72,29 @@ public static class Program
             var config = parseResult.GetValue(configOption) ?? new FileInfo("deployer.yaml");
             var dryRun = parseResult.GetValue(dryRunOption);
             var version = parseResult.GetValue(versionOption);
+            var packageOnly = parseResult.GetValue(packageOnlyOption);
+            var packageProject = parseResult.GetValue(packageProjectOption);
+            var rawPackageTargets = parseResult.GetValue(packageTargetOption) ?? [];
+            var outputDir = parseResult.GetValue(outputDirOption);
+
+            var packageTargets = PackageTarget.ParseMany(rawPackageTargets);
+            if (packageTargets.IsFailure)
+            {
+                Log.Logger.Error("Invalid package target: {Error}", packageTargets.Error);
+                exitCode = 1;
+                return;
+            }
 
             var phaseReporter = new ConsolePhaseReporter(logger: Log.Logger);
             var orchestrator = new DeploymentOrchestrator(Log.Logger, phaseReporter: phaseReporter);
             var options = new DeployOptions
             {
                 DryRun = dryRun,
-                VersionOverride = version
+                VersionOverride = version,
+                PackageOnly = packageOnly,
+                PackageProject = packageProject,
+                PackageTargets = packageTargets.Value,
+                OutputDirOverride = outputDir?.FullName
             };
 
             var result = await orchestrator.Run(config.FullName, options, Log.Logger);
