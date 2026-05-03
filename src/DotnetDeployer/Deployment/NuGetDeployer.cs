@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
 using DotnetDeployer.Configuration.Secrets;
@@ -123,11 +125,7 @@ public class NuGetDeployer : INuGetDeployer
 
                 logger.Information("Pushing {Package} to {Source}", packageName, config.Source);
 
-                // Note: ICommand sanitizes API keys in logs automatically
-                var pushResult = await command.Execute(
-                    "dotnet",
-                    $"nuget push \"{package}\" --api-key {apiKey} --source {config.Source} --skip-duplicate",
-                    solutionDir);
+                var pushResult = await PushPackage(package, apiKey!, config.Source, solutionDir, logger);
 
                 if (pushResult.IsFailure)
                 {
@@ -139,5 +137,67 @@ public class NuGetDeployer : INuGetDeployer
                 }
             }
         });
+    }
+
+    private static async Task<Result<string>> PushPackage(
+        string package,
+        string apiKey,
+        string source,
+        string workingDirectory,
+        ILogger logger)
+    {
+        logger.Debug(
+            "Executing command: dotnet with arguments: nuget push \"{Package}\" --api-key ***HIDDEN*** --source {Source} --skip-duplicate in directory: {Directory}",
+            package,
+            source,
+            workingDirectory);
+
+        var psi = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        psi.ArgumentList.Add("nuget");
+        psi.ArgumentList.Add("push");
+        psi.ArgumentList.Add(package);
+        psi.ArgumentList.Add("--api-key");
+        psi.ArgumentList.Add(apiKey);
+        psi.ArgumentList.Add("--source");
+        psi.ArgumentList.Add(source);
+        psi.ArgumentList.Add("--skip-duplicate");
+
+        using var process = new Process { StartInfo = psi };
+        var output = new StringBuilder();
+        var gate = new object();
+
+        void Append(string? line)
+        {
+            if (line is null) return;
+            lock (gate)
+            {
+                output.AppendLine(line);
+            }
+        }
+
+        process.OutputDataReceived += (_, e) => Append(e.Data);
+        process.ErrorDataReceived += (_, e) => Append(e.Data);
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        await process.WaitForExitAsync().ConfigureAwait(false);
+
+        var sanitizedOutput = output.ToString().Replace(apiKey, "***HIDDEN***", StringComparison.Ordinal);
+        if (process.ExitCode != 0)
+            return Result.Failure<string>($"dotnet nuget push exited with code {process.ExitCode}:{Environment.NewLine}{sanitizedOutput}");
+
+        if (!string.IsNullOrWhiteSpace(sanitizedOutput))
+            logger.Debug("Command succeeded:{NewLine}{Output}", Environment.NewLine, sanitizedOutput.TrimEnd());
+
+        return Result.Success(sanitizedOutput);
     }
 }
