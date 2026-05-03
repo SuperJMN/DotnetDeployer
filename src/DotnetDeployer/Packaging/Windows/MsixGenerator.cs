@@ -4,7 +4,6 @@ using DotnetDeployer.Msbuild;
 using DotnetDeployer.Versioning;
 using DotnetPackaging.Msix;
 using Serilog;
-using Zafiro.DivineBytes;
 using IOPath = System.IO.Path;
 
 namespace DotnetDeployer.Packaging.Windows;
@@ -52,7 +51,7 @@ public class MsixGenerator : IPackageGenerator
             FileName = fileName,
             Type = PackageType.Msix,
             Architecture = arch,
-            Content = ByteSource.FromStreamFactory(() => File.OpenRead(outputFile))
+            Content = PackageContent.FromFile(outputFile)
         });
     }
 }

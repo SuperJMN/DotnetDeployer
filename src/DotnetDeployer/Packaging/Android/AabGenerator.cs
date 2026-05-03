@@ -4,7 +4,6 @@ using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using Serilog;
 using Zafiro.Commands;
-using Zafiro.DivineBytes;
 using ICommand = Zafiro.Commands.ICommand;
 using IOPath = System.IO.Path;
 
@@ -105,7 +104,7 @@ public class AabGenerator : IPackageGenerator
             FileName = fileName,
             Type = PackageType.Aab,
             Architecture = Architecture.X64, // AABs are typically multi-arch
-            Content = ByteSource.FromStreamFactory(() => File.OpenRead(destAab))
+            Content = PackageContent.FromFile(destAab)
         });
     }
 }

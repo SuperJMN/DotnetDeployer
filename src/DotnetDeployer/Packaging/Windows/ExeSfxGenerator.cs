@@ -4,7 +4,6 @@ using DotnetDeployer.Msbuild;
 using DotnetDeployer.Versioning;
 using DotnetPackaging.Exe;
 using Serilog;
-using Zafiro.DivineBytes;
 using IOPath = System.IO.Path;
 
 namespace DotnetDeployer.Packaging.Windows;
@@ -60,7 +59,7 @@ public class ExeSfxGenerator : IPackageGenerator
             FileName = fileName,
             Type = PackageType.ExeSfx,
             Architecture = arch,
-            Content = ByteSource.FromStreamFactory(() => File.OpenRead(outputFile))
+            Content = PackageContent.FromFile(outputFile)
         });
     }
 }

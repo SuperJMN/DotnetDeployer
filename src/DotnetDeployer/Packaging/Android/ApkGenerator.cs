@@ -4,7 +4,6 @@ using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using Serilog;
 using Zafiro.Commands;
-using Zafiro.DivineBytes;
 using ICommand = Zafiro.Commands.ICommand;
 using IOPath = System.IO.Path;
 
@@ -154,7 +153,7 @@ public class ApkGenerator : IPackageGenerator
             FileName = fileName,
             Type = PackageType.Apk,
             Architecture = Architecture.X64, // Android APKs are typically multi-arch
-            Content = ByteSource.FromStreamFactory(() => File.OpenRead(destApk))
+            Content = PackageContent.FromFile(destApk)
         });
     }
 }

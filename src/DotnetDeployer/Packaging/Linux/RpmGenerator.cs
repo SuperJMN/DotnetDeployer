@@ -4,7 +4,6 @@ using DotnetDeployer.Msbuild;
 using DotnetDeployer.Versioning;
 using DotnetPackaging.Rpm;
 using Serilog;
-using Zafiro.DivineBytes;
 using IOPath = System.IO.Path;
 
 namespace DotnetDeployer.Packaging.Linux;
@@ -60,7 +59,7 @@ public class RpmGenerator : IPackageGenerator
             FileName = fileName,
             Type = PackageType.Rpm,
             Architecture = arch,
-            Content = ByteSource.FromStreamFactory(() => File.OpenRead(outputFile))
+            Content = PackageContent.FromFile(outputFile)
         });
     }
 }
