@@ -40,7 +40,7 @@ public class MsixGenerator : IPackageGenerator
                 pub.Rid = arch.ToWindowsRid();
                 pub.MsBuildProperties = PublishVersionProperties.For(metadata.Version);
             },
-            logger);
+            logger: logger);
 
         if (result.IsFailure)
         {
