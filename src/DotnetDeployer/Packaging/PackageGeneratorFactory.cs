@@ -45,7 +45,7 @@ public class PackageGeneratorFactory
         };
     }
 
-    public IPackageGenerator GetGenerator(PackageType type)
+    public virtual IPackageGenerator GetGenerator(PackageType type)
     {
         if (!generators.TryGetValue(type, out var generator))
         {
@@ -55,7 +55,7 @@ public class PackageGeneratorFactory
         return generator;
     }
 
-    public IPackageGenerator GetGenerator(PackageFormatConfig formatConfig)
+    public virtual IPackageGenerator GetGenerator(PackageFormatConfig formatConfig)
     {
         var type = formatConfig.GetPackageType();
 

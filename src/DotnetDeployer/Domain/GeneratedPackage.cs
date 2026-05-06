@@ -7,6 +7,8 @@ namespace DotnetDeployer.Domain;
 /// </summary>
 public sealed class GeneratedPackage : IDisposable
 {
+    private bool isDisposed;
+
     public required string FileName { get; init; }
     public required PackageType Type { get; init; }
     public required Architecture Architecture { get; init; }
@@ -14,6 +16,13 @@ public sealed class GeneratedPackage : IDisposable
 
     public void Dispose()
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
+
         if (Content is IDisposable disposable)
         {
             disposable.Dispose();

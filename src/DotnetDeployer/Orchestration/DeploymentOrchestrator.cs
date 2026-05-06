@@ -235,9 +235,22 @@ public class DeploymentOrchestrator
         var version = await DetermineVersion(configDir, options, logger);
         logger.Information("Deploying version {Version}", version);
 
-        var packages = GeneratePackages(config, configDir, version, logger);
+        var packagesResult = await GeneratePackages(config, configDir, version, logger);
+        if (packagesResult.IsFailure)
+        {
+            return Result.Failure(packagesResult.Error);
+        }
 
-        return await githubDeployer.Deploy(config, version, packages, options.DryRun, logger);
+        var packages = packagesResult.Value;
+
+        try
+        {
+            return await githubDeployer.Deploy(config, version, EnumeratePackages(packages), options.DryRun, logger);
+        }
+        finally
+        {
+            DisposePackages(packages);
+        }
     }
 
     private async Task<Result> GeneratePackagesOnly(
@@ -246,119 +259,135 @@ public class DeploymentOrchestrator
         string version,
         ILogger logger)
     {
-        var count = 0;
-        await foreach (var package in GeneratePackages(config, configDir, version, logger))
+        var packagesResult = await GeneratePackages(config, configDir, version, logger);
+        if (packagesResult.IsFailure)
         {
-            count++;
+            return Result.Failure(packagesResult.Error);
+        }
+
+        var packages = packagesResult.Value;
+        foreach (var package in packages)
+        {
             logger.Information("Generated package: {FileName}", package.FileName);
             package.Dispose();
         }
 
-        return count == 0
+        return packages.Count == 0
             ? Result.Failure("No packages were generated.")
             : Result.Success();
     }
 
-    private async IAsyncEnumerable<GeneratedPackage> GeneratePackages(
+    private async Task<Result<List<GeneratedPackage>>> GeneratePackages(
         GitHubConfig config,
         string configDir,
         string version,
-        ILogger logger,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        ILogger logger)
     {
-        // Use custom output directory if specified, otherwise use temp
+        // Use custom output directory if specified, otherwise use config directory.
         string outputDir;
-        bool cleanupOnFinish;
 
         if (!string.IsNullOrEmpty(config.OutputDir))
         {
             outputDir = Path.IsPathRooted(config.OutputDir)
                 ? config.OutputDir
                 : Path.Combine(configDir, config.OutputDir);
-            cleanupOnFinish = false;
         }
         else
         {
             // Default to config directory (where deployer.yaml is)
             outputDir = configDir;
-            cleanupOnFinish = false;
         }
 
         logger.Information("Packages will be saved to: {OutputDir}", outputDir);
         Directory.CreateDirectory(outputDir);
 
-        try
+        var packages = new List<GeneratedPackage>();
+        var errors = new List<string>();
+
+        foreach (var projectConfig in config.Packages)
         {
-            foreach (var projectConfig in config.Packages)
+            var projectPath = Path.IsPathRooted(projectConfig.Project)
+                ? projectConfig.Project
+                : Path.Combine(configDir, projectConfig.Project);
+
+            logger.Debug("Processing project: {Project}", projectPath);
+
+            var metadataResult = await metadataExtractor.Extract(projectPath);
+            if (metadataResult.IsFailure)
             {
-                var projectPath = Path.IsPathRooted(projectConfig.Project)
-                    ? projectConfig.Project
-                    : Path.Combine(configDir, projectConfig.Project);
+                var error = $"Failed to extract metadata from {projectPath}: {metadataResult.Error}";
+                logger.Error("{Error}", error);
+                errors.Add(error);
+                continue;
+            }
 
-                logger.Debug("Processing project: {Project}", projectPath);
+            var metadata = metadataResult.Value;
 
-                var metadataResult = await metadataExtractor.Extract(projectPath);
-                if (metadataResult.IsFailure)
+            // Override version with the global version from GitVersion
+            metadata = metadata with { Version = version };
+
+            foreach (var formatConfig in projectConfig.Formats)
+            {
+                var packageType = formatConfig.GetPackageType();
+                var generator = generatorFactory.GetGenerator(formatConfig);
+
+                foreach (var arch in formatConfig.GetArchitectures())
                 {
-                    logger.Error("Failed to extract metadata from {Project}: {Error}", projectPath, metadataResult.Error);
-                    continue;
-                }
+                    logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
 
-                var metadata = metadataResult.Value;
+                    var phaseName = $"package.generate.{packageType.ToString().ToLowerInvariant()}.{arch.ToString().ToLowerInvariant()}";
+                    var pkgPhase = phases.BeginPhase(phaseName,
+                        ("project", metadata.AssemblyName ?? ""),
+                        ("type", packageType.ToString()),
+                        ("arch", arch.ToString()));
 
-                // Override version with the global version from GitVersion
-                metadata = metadata with { Version = version };
+                    var result = await generator.Generate(projectPath, arch, metadata, outputDir, logger);
 
-                foreach (var formatConfig in projectConfig.Formats)
-                {
-                    var packageType = formatConfig.GetPackageType();
-                    var generator = generatorFactory.GetGenerator(formatConfig);
-
-                    foreach (var arch in formatConfig.GetArchitectures())
+                    if (result.IsSuccess)
                     {
-                        logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
-
-                        var phaseName = $"package.generate.{packageType.ToString().ToLowerInvariant()}.{arch.ToString().ToLowerInvariant()}";
-                        var pkgPhase = phases.BeginPhase(phaseName,
-                            ("project", metadata.AssemblyName ?? ""),
-                            ("type", packageType.ToString()),
-                            ("arch", arch.ToString()));
-
-                        var result = await generator.Generate(projectPath, arch, metadata, outputDir, logger);
-
-                        if (result.IsSuccess)
-                        {
-                            pkgPhase.AddEndAttribute("file", result.Value.FileName);
-                            pkgPhase.Dispose();
-                            yield return result.Value;
-                        }
-                        else
-                        {
-                            pkgPhase.MarkFailure();
-                            pkgPhase.Dispose();
-                            logger.Error("Failed to generate {Type} ({Arch}): {Error}", packageType, arch, result.Error);
-                        }
+                        pkgPhase.AddEndAttribute("file", result.Value.FileName);
+                        pkgPhase.Dispose();
+                        packages.Add(result.Value);
+                    }
+                    else
+                    {
+                        pkgPhase.MarkFailure();
+                        pkgPhase.Dispose();
+                        var error = $"Failed to generate {packageType} ({arch}) for {metadata.AssemblyName}: {result.Error}";
+                        logger.Error("{Error}", error);
+                        errors.Add(error);
                     }
                 }
             }
         }
-        finally
+
+        if (errors.Count == 0)
         {
-            // Cleanup only if using temp directory
-            if (cleanupOnFinish)
-            {
-                try
-                {
-                    if (Directory.Exists(outputDir))
-                    {
-                        Directory.Delete(outputDir, recursive: true);
-                    }
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
+            return packages;
+        }
+
+        DisposePackages(packages);
+        return Result.Failure<List<GeneratedPackage>>($"Package generation failed: {string.Join("; ", errors)}");
+    }
+
+    private static async IAsyncEnumerable<GeneratedPackage> EnumeratePackages(
+        IEnumerable<GeneratedPackage> packages,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var package in packages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return package;
+
+            await Task.CompletedTask;
+        }
+    }
+
+    private static void DisposePackages(IEnumerable<GeneratedPackage> packages)
+    {
+        foreach (var package in packages)
+        {
+            package.Dispose();
         }
     }
 
