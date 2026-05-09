@@ -25,6 +25,7 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
         "Company",
         "Copyright",
         "ApplicationIcon",
+        "PackageIcon",
         "IsPackable",
         "RepositoryUrl"
     ];
@@ -40,7 +41,6 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
 
         return await Result.Try(async () =>
         {
-            var projectDir = Path.GetDirectoryName(projectPath)!;
             var properties = new Dictionary<string, string>();
 
             foreach (var prop in PropertiesToExtract)
@@ -55,10 +55,10 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
             var assemblyName = properties.GetValueOrDefault("AssemblyName")
                                ?? Path.GetFileNameWithoutExtension(projectPath);
 
-            var iconPath = properties.GetValueOrDefault("ApplicationIcon");
-            var absoluteIconPath = !string.IsNullOrEmpty(iconPath) && !Path.IsPathRooted(iconPath)
-                ? Path.Combine(projectDir, iconPath)
-                : iconPath;
+            var iconPath = ProjectIconResolver.Resolve(
+                projectPath,
+                properties.GetValueOrDefault("ApplicationIcon"),
+                properties.GetValueOrDefault("PackageIcon"));
 
             return new ProjectMetadata
             {
@@ -76,7 +76,7 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
                 Product = properties.GetValueOrDefault("Product"),
                 Company = properties.GetValueOrDefault("Company"),
                 Copyright = properties.GetValueOrDefault("Copyright"),
-                IconPath = Maybe.From(absoluteIconPath).Where(File.Exists),
+                IconPath = iconPath,
                 IsPackable = bool.TryParse(properties.GetValueOrDefault("IsPackable"), out var isPackable) && isPackable,
                 RepositoryUrl = properties.GetValueOrDefault("RepositoryUrl")
             };
