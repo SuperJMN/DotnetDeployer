@@ -23,6 +23,7 @@ public record ProjectMetadata
     public bool IsPackable { get; init; }
     public string? RepositoryUrl { get; init; }
 
-    public string GetDisplayName() => Product ?? AssemblyName;
-    public string GetPackageName() => PackageId ?? AssemblyName;
+    public string GetDisplayName() => DesktopProjectIdentity.GetDisplayName(AssemblyName, Product);
+    public string GetPackageName() => DesktopProjectIdentity.GetPackageName(AssemblyName, PackageId);
+    public string? GetStartupWmClass() => DesktopProjectIdentity.GetStartupWmClass(AssemblyName);
 }

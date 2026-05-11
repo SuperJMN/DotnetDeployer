@@ -33,12 +33,7 @@ public class FlatpakGenerator : IPackageGenerator
             outputFile,
             opt =>
             {
-                if (metadata.GetDisplayName() != null)
-                    opt.PackageOptions.WithName(metadata.GetDisplayName());
-                if (metadata.Version != null)
-                    opt.PackageOptions.WithVersion(metadata.Version);
-                if (metadata.Description != null)
-                    opt.PackageOptions.WithDescription(metadata.Description);
+                opt.PackageOptions.ApplyProjectMetadata(metadata);
             },
             pub =>
             {

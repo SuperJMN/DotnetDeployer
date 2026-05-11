@@ -102,21 +102,7 @@ public class AppImageGenerator : IPackageGenerator
     private static AppImagePackagerMetadata CreatePackagerMetadata(ProjectMetadata metadata)
     {
         var packagerMetadata = new AppImagePackagerMetadata();
-        if (metadata.GetDisplayName() != null)
-        {
-            packagerMetadata.PackageOptions.WithName(metadata.GetDisplayName());
-        }
-
-        if (metadata.Version != null)
-        {
-            packagerMetadata.PackageOptions.WithVersion(metadata.Version);
-        }
-
-        if (metadata.Description != null)
-        {
-            packagerMetadata.PackageOptions.WithDescription(metadata.Description);
-        }
-
+        packagerMetadata.PackageOptions.ApplyProjectMetadata(metadata);
         return packagerMetadata;
     }
 }

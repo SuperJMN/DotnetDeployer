@@ -33,12 +33,7 @@ public class RpmGenerator : IPackageGenerator
             outputFile,
             opt =>
             {
-                if (metadata.GetDisplayName() != null)
-                    opt.WithName(metadata.GetDisplayName());
-                if (metadata.Version != null)
-                    opt.WithVersion(metadata.Version);
-                if (metadata.Description != null)
-                    opt.WithDescription(metadata.Description);
+                opt.ApplyProjectMetadata(metadata);
             },
             pub =>
             {

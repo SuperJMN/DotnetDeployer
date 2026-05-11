@@ -122,6 +122,55 @@ public sealed class AppImageIconTests : IDisposable
         Assert.False(File.Exists(IOPath.Combine(publisher.PublishDirectory, "icon.png")));
     }
 
+    [Fact]
+    public void ProjectMetadata_StripsDesktopSuffixFromImplicitSdkProduct()
+    {
+        var metadata = new ProjectMetadata
+        {
+            ProjectPath = "src/Sample.Desktop/Sample.Desktop.csproj",
+            AssemblyName = "Sample.Desktop",
+            Product = "Sample.Desktop",
+            IconPath = Maybe<string>.None
+        };
+
+        Assert.Equal("Sample", metadata.GetDisplayName());
+        Assert.Equal("Sample", metadata.GetStartupWmClass());
+    }
+
+    [Fact]
+    public async Task Generator_PassesDesktopAppIdentityToAppImagePackager()
+    {
+        var repo = CreateRepository();
+        var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
+        var projectPath = IOPath.Combine(projectDir, "Sample.Desktop.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var outputDir = Directory.CreateDirectory(IOPath.Combine(tempDir, "packages")).FullName;
+        var publisher = new FakePublisher(tempDir);
+        var packager = new RecordingAppImagePackager();
+        var generator = new AppImageGenerator(publisher, packager);
+        var metadata = new ProjectMetadata
+        {
+            ProjectPath = projectPath,
+            AssemblyName = "Sample.Desktop",
+            Product = "Sample.Desktop",
+            Version = "1.2.3",
+            IconPath = Maybe<string>.None
+        };
+
+        var result = await generator.Generate(projectPath, Architecture.X64, metadata, outputDir, Logger.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
+        Assert.Equal("Sample", packager.PackageName);
+        Assert.Equal("Sample", packager.StartupWmClass);
+    }
+
     private string CreateRepository()
     {
         var repo = Directory.CreateDirectory(IOPath.Combine(tempDir, Guid.NewGuid().ToString("N"))).FullName;
@@ -144,6 +193,8 @@ public sealed class AppImageIconTests : IDisposable
     private sealed class RecordingAppImagePackager : IAppImagePublishedProjectPackager
     {
         public IReadOnlyCollection<string> PublishedPaths { get; private set; } = [];
+        public string? PackageName { get; private set; }
+        public string? StartupWmClass { get; private set; }
 
         public async Task<Result> PackPublishedProject(
             IContainer publishedProject,
@@ -155,6 +206,8 @@ public sealed class AppImageIconTests : IDisposable
             PublishedPaths = publishedProject.ResourcesWithPathsRecursive()
                 .Select(resource => ((INamedWithPath)resource).FullPath().ToString())
                 .ToArray();
+            PackageName = metadata.PackageOptions.Name.GetValueOrDefault();
+            StartupWmClass = metadata.PackageOptions.StartupWmClass.GetValueOrDefault();
 
             await File.WriteAllTextAsync(outputPath, "fake appimage");
             return Result.Success();
