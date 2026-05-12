@@ -2,15 +2,19 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
-    <ZafiroVersion>47.0.6</ZafiroVersion>
-    <DotnetPackagingVersion>10.1.26</DotnetPackagingVersion>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <ZafiroVersion>47.0.8</ZafiroVersion>
+    <DotnetPackagingVersion>10.1.27</DotnetPackagingVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.6.0" />
-    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
-    <PackageVersion Include="Serilog" Version="4.3.0" />
+    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
+    <PackageVersion Include="YamlDotNet" Version="17.1.0" />
+    <PackageVersion Include="Serilog" Version="4.3.1" />
+    <PackageVersion Include="SharpCompress" Version="0.48.0" />
+    <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
     <PackageVersion Include="Octokit" Version="14.*" />
     <PackageVersion Include="Zafiro" Version="$(ZafiroVersion)" />
+    <PackageVersion Include="Zafiro.DivineBytes" Version="$(ZafiroVersion)" />
     <PackageVersion Include="DotnetPackaging" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="DotnetPackaging.AppImage" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="DotnetPackaging.Deb" Version="$(DotnetPackagingVersion)" />
@@ -19,11 +23,11 @@
     <PackageVersion Include="DotnetPackaging.Dmg" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="DotnetPackaging.Exe" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="DotnetPackaging.Msix" Version="$(DotnetPackagingVersion)" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.2" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.7" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.*" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 </Project>
