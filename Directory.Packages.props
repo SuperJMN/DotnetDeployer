@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
     <ZafiroVersion>47.0.8</ZafiroVersion>
-    <DotnetPackagingVersion>10.1.27</DotnetPackagingVersion>
+    <DotnetPackagingVersion>10.1.32</DotnetPackagingVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
@@ -13,14 +13,14 @@
     <PackageVersion Include="Octokit" Version="14.*" />
     <PackageVersion Include="Zafiro" Version="$(ZafiroVersion)" />
     <PackageVersion Include="Zafiro.DivineBytes" Version="$(ZafiroVersion)" />
-    <PackageVersion Include="DotnetPackaging" Version="10.1.30" />
-    <PackageVersion Include="DotnetPackaging.AppImage" Version="10.1.30" />
-    <PackageVersion Include="DotnetPackaging.Deb" Version="10.1.30" />
-    <PackageVersion Include="DotnetPackaging.Rpm" Version="10.1.30" />
+    <PackageVersion Include="DotnetPackaging" Version="$(DotnetPackagingVersion)" />
+    <PackageVersion Include="DotnetPackaging.AppImage" Version="$(DotnetPackagingVersion)" />
+    <PackageVersion Include="DotnetPackaging.Deb" Version="$(DotnetPackagingVersion)" />
+    <PackageVersion Include="DotnetPackaging.Rpm" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="DotnetPackaging.Flatpak" Version="9.0.6" />
-    <PackageVersion Include="DotnetPackaging.Dmg" Version="10.1.30" />
-    <PackageVersion Include="DotnetPackaging.Exe" Version="10.1.30" />
-    <PackageVersion Include="DotnetPackaging.Msix" Version="10.1.30" />
+    <PackageVersion Include="DotnetPackaging.Dmg" Version="$(DotnetPackagingVersion)" />
+    <PackageVersion Include="DotnetPackaging.Exe" Version="$(DotnetPackagingVersion)" />
+    <PackageVersion Include="DotnetPackaging.Msix" Version="$(DotnetPackagingVersion)" />
     <PackageVersion Include="System.CommandLine" Version="2.0.7" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.*" />
     <PackageVersion Include="coverlet.collector" Version="10.0.0" />
