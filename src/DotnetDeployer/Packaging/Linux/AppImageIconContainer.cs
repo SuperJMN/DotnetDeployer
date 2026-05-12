@@ -15,7 +15,7 @@ internal static class AppImageIconContainer
         ProjectMetadata metadata,
         ILogger logger)
     {
-        var iconPath = ProjectIconResolver.Resolve(projectPath, metadata);
+        var iconPath = ProjectIconResolver.ResolveAppImage(projectPath, metadata);
         if (iconPath.HasNoValue)
         {
             logger.Warning("AppImage icon autodetection: no project icon found for {ProjectPath}", projectPath);

@@ -5,6 +5,21 @@ namespace DotnetDeployer.Msbuild;
 
 internal static class ProjectIconResolver
 {
+    private static readonly string[] AppImageIconExtensions =
+    [
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+        ".gif",
+        ".tif",
+        ".tiff",
+        ".webp",
+        ".tga",
+        ".pbm",
+        ".qoi"
+    ];
+
     private static readonly string[] CommonIconPaths =
     [
         "icon-512.png",
@@ -24,6 +39,14 @@ internal static class ProjectIconResolver
     public static Maybe<string> Resolve(string projectPath, ProjectMetadata metadata)
     {
         return metadata.IconPath.Where(File.Exists)
+            .Or(FindCommonIcon(projectPath));
+    }
+
+    public static Maybe<string> ResolveAppImage(string projectPath, ProjectMetadata metadata)
+    {
+        return metadata.IconPath
+            .Where(File.Exists)
+            .Where(IsAppImageIconLoadable)
             .Or(FindCommonIcon(projectPath));
     }
 
@@ -99,6 +122,11 @@ internal static class ProjectIconResolver
         }
 
         return Maybe<string>.None;
+    }
+
+    private static bool IsAppImageIconLoadable(string path)
+    {
+        return AppImageIconExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> ProjectReferenceDirectories(string projectPath)

@@ -89,6 +89,33 @@ public sealed class AppImageIconTests : IDisposable
     }
 
     [Fact]
+    public async Task MetadataExtractor_PrefersPackageIcon_WhenApplicationIconIsAlsoDeclared()
+    {
+        var repo = CreateRepository();
+        var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
+        var packageIconPath = IOPath.Combine(projectDir, "package-icon.png");
+        await File.WriteAllBytesAsync(IOPath.Combine(projectDir, "app.ico"), TestIco);
+        await File.WriteAllBytesAsync(packageIconPath, TestPng);
+        var projectPath = IOPath.Combine(projectDir, "Sample.Desktop.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ApplicationIcon>app.ico</ApplicationIcon>
+                <PackageIcon>package-icon.png</PackageIcon>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var extractor = new MsbuildMetadataExtractor();
+
+        var result = await extractor.Extract(projectPath);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected metadata extraction to succeed.");
+        Assert.Equal(packageIconPath, result.Value.IconPath.GetValueOrDefault());
+    }
+
+    [Fact]
     public async Task Generator_AddsResolvedIconToPublishedContainerBeforePackingAppImage()
     {
         var repo = CreateRepository();
@@ -120,6 +147,42 @@ public sealed class AppImageIconTests : IDisposable
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
         Assert.Contains("icon.png", packager.PublishedPaths);
         Assert.False(File.Exists(IOPath.Combine(publisher.PublishDirectory, "icon.png")));
+    }
+
+    [Fact]
+    public async Task Generator_FallsBackToPngIcon_WhenApplicationIconIsWindowsIco()
+    {
+        var repo = CreateRepository();
+        var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
+        var iconPath = IOPath.Combine(projectDir, "icon.ico");
+        await File.WriteAllBytesAsync(iconPath, TestIco);
+        await File.WriteAllBytesAsync(IOPath.Combine(projectDir, "icon.png"), TestPng);
+        var projectPath = IOPath.Combine(projectDir, "Sample.Desktop.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ApplicationIcon>icon.ico</ApplicationIcon>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var outputDir = Directory.CreateDirectory(IOPath.Combine(tempDir, "packages")).FullName;
+        var publisher = new FakePublisher(tempDir);
+        var packager = new RecordingAppImagePackager();
+        var generator = new AppImageGenerator(publisher, packager);
+        var metadata = new ProjectMetadata
+        {
+            ProjectPath = projectPath,
+            AssemblyName = "Sample.Desktop",
+            Version = "1.2.3",
+            IconPath = Maybe.From(iconPath)
+        };
+
+        var result = await generator.Generate(projectPath, Architecture.X64, metadata, outputDir, Logger.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
+        Assert.Contains("icon.png", packager.PublishedPaths);
     }
 
     [Fact]
@@ -213,6 +276,8 @@ public sealed class AppImageIconTests : IDisposable
             return Result.Success();
         }
     }
+
+    private static readonly byte[] TestIco = [0x00, 0x00, 0x01, 0x00];
 
     private static byte[] CreateElfBytes()
     {

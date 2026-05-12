@@ -57,8 +57,8 @@ public class MsbuildMetadataExtractor : IMsbuildMetadataExtractor
 
             var iconPath = ProjectIconResolver.Resolve(
                 projectPath,
-                properties.GetValueOrDefault("ApplicationIcon"),
-                properties.GetValueOrDefault("PackageIcon"));
+                properties.GetValueOrDefault("PackageIcon"),
+                properties.GetValueOrDefault("ApplicationIcon"));
 
             return new ProjectMetadata
             {
