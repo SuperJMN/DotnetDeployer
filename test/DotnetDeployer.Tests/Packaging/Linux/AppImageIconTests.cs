@@ -184,7 +184,7 @@ public sealed class AppImageIconTests : IDisposable
     }
 
     [Fact]
-    public async Task ProjectApplicationInfoProvider_StripsDesktopSuffixFromImplicitSdkProduct()
+    public async Task ProjectApplicationInfoProvider_NormalizesDisplayButKeepsRuntimeStartupClass()
     {
         var repo = CreateRepository();
         var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
@@ -203,7 +203,7 @@ public sealed class AppImageIconTests : IDisposable
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected application info resolution to succeed.");
         Assert.Equal("Sample", result.Value.DisplayName.Value);
-        Assert.Equal("Sample", result.Value.StartupWmClass?.Value);
+        Assert.Equal("Sample.Desktop", result.Value.StartupWmClass?.Value);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public sealed class AppImageIconTests : IDisposable
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
         Assert.Equal("Sample", packager.PackageName);
-        Assert.Equal("Sample", packager.StartupWmClass);
+        Assert.Equal("Sample.Desktop", packager.StartupWmClass);
     }
 
     private string CreateRepository()

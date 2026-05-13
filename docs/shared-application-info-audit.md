@@ -118,8 +118,9 @@ Initial asset conventions:
 
 Desktop identity rules should live here too. For Avalonia desktop hosts,
 `*.Desktop` is usually a host artifact, so the default display identity and
-`StartupWMClass` should prefer the host-free application name unless explicitly
-overridden.
+package name should prefer the host-free application name. `StartupWMClass`
+must match the runtime window class, so it follows the executable identity
+unless explicitly overridden.
 
 ## Adapters
 
@@ -167,7 +168,8 @@ Responsibilities intentionally kept out:
 - Referenced Avalonia app assets: a desktop host finds an icon in a referenced
   app project.
 - Explicit overrides: CLI/config values win over MSBuild and conventions.
-- Avalonia `.Desktop` host: display name and `StartupWMClass` normalize to the
-  host-free application identity unless explicitly overridden.
+- Avalonia `.Desktop` host: display name and package name normalize to the
+  host-free application identity; `StartupWMClass` keeps the executable
+  identity unless explicitly overridden.
 - Shared publish: multiple package formats can consume one published container
   without losing application metadata.

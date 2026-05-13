@@ -2,8 +2,8 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
-    <DotnetPackagingVersion>10.1.33</DotnetPackagingVersion>
-    <DotnetProjectKitVersion>0.0.2</DotnetProjectKitVersion>
+    <DotnetPackagingVersion>10.1.35</DotnetPackagingVersion>
+    <DotnetProjectKitVersion>0.0.4</DotnetProjectKitVersion>
     <ZafiroVersion>47.0.8</ZafiroVersion>
   </PropertyGroup>
   <ItemGroup>

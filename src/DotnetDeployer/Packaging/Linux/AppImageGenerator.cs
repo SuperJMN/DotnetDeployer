@@ -146,6 +146,21 @@ public class AppImageGenerator : IPublishedProjectPackageGenerator
     {
         var packagerMetadata = new AppImagePackagerMetadata();
         packagerMetadata.PackageOptions.ApplyApplicationInfo(applicationInfo);
+        PreferExecutableStartupWmClassForConvention(packagerMetadata, applicationInfo);
         return packagerMetadata;
+    }
+
+    private static void PreferExecutableStartupWmClassForConvention(AppImagePackagerMetadata metadata, ApplicationInfo applicationInfo)
+    {
+        var startupWmClass = applicationInfo.StartupWmClass;
+        var executableName = applicationInfo.ExecutableName.Value;
+        if (startupWmClass?.Source != ApplicationInfoSource.Convention ||
+            string.IsNullOrWhiteSpace(executableName) ||
+            string.Equals(startupWmClass.Value, executableName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        metadata.PackageOptions.WithStartupWmClass(executableName);
     }
 }
