@@ -12,18 +12,16 @@
     <PackageReference Include="YamlDotNet" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="Octokit" />
-    <PackageReference Include="Zafiro" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="DotnetProjectKit" />
     <PackageReference Include="DotnetPackaging" />
     <PackageReference Include="DotnetPackaging.AppImage" />
     <PackageReference Include="DotnetPackaging.Deb" />
     <PackageReference Include="DotnetPackaging.Rpm" />
-    <PackageReference Include="DotnetPackaging.Flatpak" />
     <PackageReference Include="DotnetPackaging.Dmg" />
     <PackageReference Include="DotnetPackaging.Exe" />
     <PackageReference Include="DotnetPackaging.Msix" />
+    <PackageReference Include="Zafiro" />
+    <PackageReference Include="Zafiro.DivineBytes" />
   </ItemGroup>
 
   <ItemGroup>

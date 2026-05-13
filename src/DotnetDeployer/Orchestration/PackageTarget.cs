@@ -11,7 +11,6 @@ public sealed record PackageTarget(PackageType Type, Architecture Architecture)
         PackageType.AppImage => "appimage",
         PackageType.Deb => "deb",
         PackageType.Rpm => "rpm",
-        PackageType.Flatpak => "flatpak",
         PackageType.ExeSfx => "exe-sfx",
         PackageType.ExeSetup => "exe-setup",
         PackageType.Msix => "msix",

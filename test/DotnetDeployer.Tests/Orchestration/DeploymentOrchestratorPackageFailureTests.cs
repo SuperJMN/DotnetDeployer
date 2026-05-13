@@ -5,6 +5,8 @@ using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using DotnetDeployer.Orchestration;
 using DotnetDeployer.Packaging;
+using DotnetDeployer.Tests;
+using DotnetProjectKit;
 using Serilog;
 using Serilog.Core;
 
@@ -33,7 +35,7 @@ public sealed class DeploymentOrchestratorPackageFailureTests
             var orchestrator = new DeploymentOrchestrator(
                 logger: Logger.None,
                 configReader: new StaticConfigReader(CreateConfig(projectPath)),
-                metadataExtractor: new StaticMetadataExtractor(projectPath),
+                applicationInfoProvider: new StaticApplicationInfoProvider(projectPath),
                 generatorFactory: generatorFactory,
                 githubDeployer: githubDeployer);
 
@@ -93,20 +95,14 @@ public sealed class DeploymentOrchestratorPackageFailureTests
         public Result<DeployerConfig> Read(string configPath) => config;
     }
 
-    private sealed class StaticMetadataExtractor(string projectPath) : IMsbuildMetadataExtractor
+    private sealed class StaticApplicationInfoProvider(string projectPath) : IApplicationInfoProvider
     {
-        public Task<Result<ProjectMetadata>> Extract(string path)
+        public Task<Result<ApplicationInfo>> Resolve(string path)
         {
-            var metadata = new ProjectMetadata
-            {
-                ProjectPath = projectPath,
-                AssemblyName = "App",
-                Version = "0.0.0",
-                IconPath = Maybe<string>.None,
-                IsPackable = true
-            };
-
-            return Task.FromResult(Result.Success(metadata));
+            return Task.FromResult(Result.Success(ApplicationInfoTestFactory.Create(
+                projectPath,
+                assemblyName: "App",
+                version: "0.0.0")));
         }
     }
 
@@ -127,7 +123,7 @@ public sealed class DeploymentOrchestratorPackageFailureTests
         public Task<Result<GeneratedPackage>> Generate(
             string projectPath,
             Architecture arch,
-            ProjectMetadata metadata,
+            ApplicationInfo applicationInfo,
             string outputPath,
             ILogger logger)
         {
@@ -142,7 +138,7 @@ public sealed class DeploymentOrchestratorPackageFailureTests
         public Task<Result<GeneratedPackage>> Generate(
             string projectPath,
             Architecture arch,
-            ProjectMetadata metadata,
+            ApplicationInfo applicationInfo,
             string outputPath,
             ILogger logger)
         {

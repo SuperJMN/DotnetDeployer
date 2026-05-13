@@ -9,7 +9,6 @@ public enum PackageType
     AppImage,
     Deb,
     Rpm,
-    Flatpak,
 
     // Windows
     ExeSfx,

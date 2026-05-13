@@ -3,6 +3,7 @@ using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using DotnetDeployer.Packaging;
 using DotnetDeployer.Packaging.Android;
+using DotnetDeployer.Tests;
 using Serilog;
 
 namespace DotnetDeployer.Tests.Platforms.Android;
@@ -35,12 +36,12 @@ public class AndroidTargetFrameworkTests : IDisposable
             </Project>
             """);
 
-        var extractor = new MsbuildMetadataExtractor();
+        var extractor = new ProjectApplicationInfoProvider();
 
-        var result = await extractor.Extract(projectPath);
+        var result = await extractor.Resolve(projectPath);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected extraction to succeed.");
-        Assert.Equal("net10.0-android", result.Value.AndroidTargetFramework);
+        Assert.Equal("net10.0-android", result.Value.AndroidTargetFramework?.Value);
     }
 
     [Fact]
@@ -54,12 +55,12 @@ public class AndroidTargetFrameworkTests : IDisposable
             </Project>
             """);
 
-        var extractor = new MsbuildMetadataExtractor();
+        var extractor = new ProjectApplicationInfoProvider();
 
-        var result = await extractor.Extract(projectPath);
+        var result = await extractor.Resolve(projectPath);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected extraction to succeed.");
-        Assert.Equal("net10.0-android", result.Value.AndroidTargetFramework);
+        Assert.Equal("net10.0-android", result.Value.AndroidTargetFramework?.Value);
     }
 
     [Theory]
@@ -77,17 +78,14 @@ public class AndroidTargetFrameworkTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(publishDir, foundFileName), "dummy");
 
         var runner = new RecordingPublishRunner();
-        var metadata = new ProjectMetadata
-        {
-            ProjectPath = projectPath,
-            AssemblyName = "App",
-            IconPath = Maybe<string>.None,
-            AndroidTargetFramework = targetFramework
-        };
+        var applicationInfo = ApplicationInfoTestFactory.Create(
+            projectPath,
+            assemblyName: "App",
+            androidTargetFramework: targetFramework);
 
         var generator = (IPackageGenerator)Activator.CreateInstance(generatorType, null, null, runner)!;
         var logger = new LoggerConfiguration().CreateLogger();
-        var result = await generator.Generate(projectPath, Architecture.Arm64, metadata, outputDir, logger);
+        var result = await generator.Generate(projectPath, Architecture.Arm64, applicationInfo, outputDir, logger);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected package generation to succeed.");
         Assert.Contains($"-f {targetFramework}", runner.Arguments);

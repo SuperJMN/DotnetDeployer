@@ -191,7 +191,6 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
         DeployerPackageType.AppImage => "application/octet-stream",
         DeployerPackageType.Deb => "application/vnd.debian.binary-package",
         DeployerPackageType.Rpm => "application/x-rpm",
-        DeployerPackageType.Flatpak => "application/octet-stream",
         DeployerPackageType.ExeSfx or DeployerPackageType.ExeSetup => "application/vnd.microsoft.portable-executable",
         DeployerPackageType.Msix => "application/msix",
         DeployerPackageType.Dmg => "application/x-apple-diskimage",

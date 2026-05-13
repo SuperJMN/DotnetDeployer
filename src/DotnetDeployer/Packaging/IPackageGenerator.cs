@@ -1,6 +1,6 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
-using DotnetDeployer.Msbuild;
+using DotnetProjectKit;
 using Serilog;
 
 namespace DotnetDeployer.Packaging;
@@ -15,7 +15,7 @@ public interface IPackageGenerator
     Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
-        ProjectMetadata metadata,
+        ApplicationInfo applicationInfo,
         string outputPath,
         ILogger logger);
 }

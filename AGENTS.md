@@ -95,7 +95,7 @@ githubPages:
 | `github` | `repo` | Repository name |
 | `github` | `token` | GitHub token — flexible value source |
 | `github` | `outputDir` | Local directory for generated packages |
-| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `flatpak`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
+| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
 | `githubPages` | `project` | Path to the WebAssembly project to deploy |

@@ -29,7 +29,6 @@ public class PackageGeneratorFactory
             [PackageType.AppImage] = new AppImageGenerator(),
             [PackageType.Deb] = new DebGenerator(),
             [PackageType.Rpm] = new RpmGenerator(),
-            [PackageType.Flatpak] = new FlatpakGenerator(),
 
             // Windows
             [PackageType.ExeSfx] = new ExeSfxGenerator(),

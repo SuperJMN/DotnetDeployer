@@ -6,9 +6,13 @@ using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using DotnetDeployer.Packaging;
 using DotnetDeployer.Versioning;
+using DotnetProjectKit;
+using DotnetPackaging.Publish;
 using Serilog;
 using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
+using IContainer = Zafiro.DivineBytes.IContainer;
+using ProjectPackagingContext = DotnetPackaging.ProjectPackagingContext;
 
 namespace DotnetDeployer.Orchestration;
 
@@ -18,7 +22,7 @@ namespace DotnetDeployer.Orchestration;
 public class DeploymentOrchestrator
 {
     private readonly IConfigReader configReader;
-    private readonly IMsbuildMetadataExtractor metadataExtractor;
+    private readonly IApplicationInfoProvider applicationInfoProvider;
     private readonly PackageGeneratorFactory generatorFactory;
     private readonly INuGetDeployer nugetDeployer;
     private readonly IGitHubReleaseDeployer githubDeployer;
@@ -27,25 +31,27 @@ public class DeploymentOrchestrator
     private readonly Packaging.Android.AndroidPrerequisitesInstaller androidPrerequisites;
     private readonly ICommand command;
     private readonly IPhaseReporter phases;
+    private readonly IPublisher packagePublisher;
 
     public DeploymentOrchestrator(
         ILogger? logger = null,
         ICommand? command = null,
         IConfigReader? configReader = null,
-        IMsbuildMetadataExtractor? metadataExtractor = null,
+        IApplicationInfoProvider? applicationInfoProvider = null,
         PackageGeneratorFactory? generatorFactory = null,
         INuGetDeployer? nugetDeployer = null,
         IGitHubReleaseDeployer? githubDeployer = null,
         IGitHubPagesDeployer? githubPagesDeployer = null,
         GitVersionService? gitVersionService = null,
         Packaging.Android.AndroidPrerequisitesInstaller? androidPrerequisites = null,
-        IPhaseReporter? phaseReporter = null)
+        IPhaseReporter? phaseReporter = null,
+        IPublisher? packagePublisher = null)
     {
         var cmd = command ?? new Command(Maybe.From(logger));
 
         this.command = cmd;
         this.configReader = configReader ?? new ConfigReader();
-        this.metadataExtractor = metadataExtractor ?? new MsbuildMetadataExtractor();
+        this.applicationInfoProvider = applicationInfoProvider ?? new ProjectApplicationInfoProvider();
         this.generatorFactory = generatorFactory ?? new PackageGeneratorFactory(cmd);
         this.nugetDeployer = nugetDeployer ?? new NuGetDeployer(cmd);
         this.phases = phaseReporter ?? NullPhaseReporter.Instance;
@@ -53,6 +59,7 @@ public class DeploymentOrchestrator
         this.githubPagesDeployer = githubPagesDeployer ?? new GitHubPagesDeployer(cmd);
         this.gitVersionService = gitVersionService ?? new GitVersionService(cmd);
         this.androidPrerequisites = androidPrerequisites ?? new Packaging.Android.AndroidPrerequisitesInstaller(cmd);
+        this.packagePublisher = packagePublisher ?? new DotnetPublisher(Maybe.From(logger));
     }
 
     public async Task<Result> Run(string configPath, DeployOptions options, ILogger logger)
@@ -312,19 +319,21 @@ public class DeploymentOrchestrator
 
             logger.Debug("Processing project: {Project}", projectPath);
 
-            var metadataResult = await metadataExtractor.Extract(projectPath);
-            if (metadataResult.IsFailure)
+            var applicationInfoResult = await applicationInfoProvider.Resolve(projectPath);
+            if (applicationInfoResult.IsFailure)
             {
-                var error = $"Failed to extract metadata from {projectPath}: {metadataResult.Error}";
+                var error = $"Failed to resolve application info from {projectPath}: {applicationInfoResult.Error}";
                 logger.Error("{Error}", error);
                 errors.Add(error);
                 continue;
             }
 
-            var metadata = metadataResult.Value;
+            var applicationInfo = applicationInfoResult.Value;
 
             // Override version with the global version from GitVersion
-            metadata = metadata with { Version = version };
+            applicationInfo = applicationInfo with { Version = new ResolvedValue<string>(version, ApplicationInfoSource.Override) };
+
+            var sharedJobs = new List<PackageGenerationJob>();
 
             foreach (var formatConfig in projectConfig.Formats)
             {
@@ -333,31 +342,20 @@ public class DeploymentOrchestrator
 
                 foreach (var arch in formatConfig.GetArchitectures())
                 {
-                    logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, metadata.AssemblyName);
-
-                    var phaseName = $"package.generate.{packageType.ToString().ToLowerInvariant()}.{arch.ToString().ToLowerInvariant()}";
-                    var pkgPhase = phases.BeginPhase(phaseName,
-                        ("project", metadata.AssemblyName ?? ""),
-                        ("type", packageType.ToString()),
-                        ("arch", arch.ToString()));
-
-                    var result = await generator.Generate(projectPath, arch, metadata, outputDir, logger);
-
-                    if (result.IsSuccess)
+                    if (generator is IPublishedProjectPackageGenerator publishedProjectGenerator)
                     {
-                        pkgPhase.AddEndAttribute("file", result.Value.FileName);
-                        pkgPhase.Dispose();
-                        packages.Add(result.Value);
+                        sharedJobs.Add(new PackageGenerationJob(projectPath, packageType, arch, applicationInfo, publishedProjectGenerator));
                     }
                     else
                     {
-                        pkgPhase.MarkFailure();
-                        pkgPhase.Dispose();
-                        var error = $"Failed to generate {packageType} ({arch}) for {metadata.AssemblyName}: {result.Error}";
-                        logger.Error("{Error}", error);
-                        errors.Add(error);
+                        await GeneratePackage(projectPath, packageType, arch, applicationInfo, generator, outputDir, packages, errors, logger);
                     }
                 }
+            }
+
+            foreach (var group in sharedJobs.GroupBy(job => job.Generator.CreatePublishPlan(job.ProjectPath, job.Architecture, job.ApplicationInfo)))
+            {
+                await GenerateSharedPublishGroup(group.Key, group.ToList(), outputDir, packages, errors, logger);
             }
         }
 
@@ -369,6 +367,127 @@ public class DeploymentOrchestrator
         DisposePackages(packages);
         return Result.Failure<List<GeneratedPackage>>($"Package generation failed: {string.Join("; ", errors)}");
     }
+
+    private async Task GenerateSharedPublishGroup(
+        PackagePublishPlan plan,
+        IReadOnlyCollection<PackageGenerationJob> jobs,
+        string outputDir,
+        List<GeneratedPackage> packages,
+        List<string> errors,
+        ILogger logger)
+    {
+        var contextResult = ProjectPackagingContext.FromApplicationInfo(jobs.First().ApplicationInfo, logger);
+        if (contextResult.IsFailure)
+        {
+            var error = $"Failed to create packaging context from {plan.ProjectPath}: {contextResult.Error}";
+            logger.Error("{Error}", error);
+            errors.Add(error);
+            return;
+        }
+
+        var publishPhase = phases.BeginPhase($"package.publish.{plan.RuntimeIdentifier}",
+            ("project", Path.GetFileNameWithoutExtension(plan.ProjectPath)),
+            ("rid", plan.RuntimeIdentifier));
+
+        var publishResult = await packagePublisher.Publish(plan.ToPublishRequest());
+        if (publishResult.IsFailure)
+        {
+            publishPhase.MarkFailure();
+            publishPhase.Dispose();
+            var error = $"Failed to publish {plan.ProjectPath} ({plan.RuntimeIdentifier}): {publishResult.Error}";
+            logger.Error("{Error}", error);
+            errors.Add(error);
+            return;
+        }
+
+        publishPhase.Dispose();
+        using var publishedProject = publishResult.Value;
+        foreach (var job in jobs)
+        {
+            await GeneratePackageFromPublished(publishedProject, contextResult.Value, job, outputDir, packages, errors, logger);
+        }
+    }
+
+    private async Task GeneratePackageFromPublished(
+        IContainer publishedProject,
+        ProjectPackagingContext context,
+        PackageGenerationJob job,
+        string outputDir,
+        List<GeneratedPackage> packages,
+        List<string> errors,
+        ILogger logger)
+    {
+        logger.Information("Generating {Type} ({Arch}) for {Project}", job.PackageType, job.Architecture, job.ApplicationInfo.AssemblyName.Value);
+
+        using var pkgPhase = phases.BeginPhase(PackageGeneratePhaseName(job.PackageType, job.Architecture),
+            ("project", job.ApplicationInfo.AssemblyName.Value),
+            ("type", job.PackageType.ToString()),
+            ("arch", job.Architecture.ToString()));
+
+        var result = await job.Generator.GenerateFromPublishedProject(
+            publishedProject,
+            context,
+            job.ProjectPath,
+            job.Architecture,
+            job.ApplicationInfo,
+            outputDir,
+            logger);
+
+        if (result.IsSuccess)
+        {
+            pkgPhase.AddEndAttribute("file", result.Value.FileName);
+            packages.Add(result.Value);
+            return;
+        }
+
+        pkgPhase.MarkFailure();
+        var error = $"Failed to generate {job.PackageType} ({job.Architecture}) for {job.ApplicationInfo.AssemblyName.Value}: {result.Error}";
+        logger.Error("{Error}", error);
+        errors.Add(error);
+    }
+
+    private async Task GeneratePackage(
+        string projectPath,
+        PackageType packageType,
+        Architecture arch,
+        ApplicationInfo applicationInfo,
+        IPackageGenerator generator,
+        string outputDir,
+        List<GeneratedPackage> packages,
+        List<string> errors,
+        ILogger logger)
+    {
+        logger.Information("Generating {Type} ({Arch}) for {Project}", packageType, arch, applicationInfo.AssemblyName.Value);
+
+        using var pkgPhase = phases.BeginPhase(PackageGeneratePhaseName(packageType, arch),
+            ("project", applicationInfo.AssemblyName.Value),
+            ("type", packageType.ToString()),
+            ("arch", arch.ToString()));
+
+        var result = await generator.Generate(projectPath, arch, applicationInfo, outputDir, logger);
+
+        if (result.IsSuccess)
+        {
+            pkgPhase.AddEndAttribute("file", result.Value.FileName);
+            packages.Add(result.Value);
+            return;
+        }
+
+        pkgPhase.MarkFailure();
+        var error = $"Failed to generate {packageType} ({arch}) for {applicationInfo.AssemblyName.Value}: {result.Error}";
+        logger.Error("{Error}", error);
+        errors.Add(error);
+    }
+
+    private static string PackageGeneratePhaseName(PackageType packageType, Architecture arch) =>
+        $"package.generate.{packageType.ToString().ToLowerInvariant()}.{arch.ToString().ToLowerInvariant()}";
+
+    private sealed record PackageGenerationJob(
+        string ProjectPath,
+        PackageType PackageType,
+        Architecture Architecture,
+        ApplicationInfo ApplicationInfo,
+        IPublishedProjectPackageGenerator Generator);
 
     private static async IAsyncEnumerable<GeneratedPackage> EnumeratePackages(
         IEnumerable<GeneratedPackage> packages,

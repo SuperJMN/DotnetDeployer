@@ -2,6 +2,7 @@ using CSharpFunctionalExtensions;
 using DotnetDeployer.Domain;
 using DotnetDeployer.Msbuild;
 using DotnetDeployer.Packaging.Linux;
+using DotnetDeployer.Tests;
 using DotnetPackaging.Publish;
 using Serilog;
 using Serilog.Core;
@@ -43,12 +44,12 @@ public sealed class AppImageIconTests : IDisposable
             </Project>
             """);
 
-        var extractor = new MsbuildMetadataExtractor();
+        var extractor = new ProjectApplicationInfoProvider();
 
-        var result = await extractor.Extract(projectPath);
+        var result = await extractor.Resolve(projectPath);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected metadata extraction to succeed.");
-        Assert.Equal(IOPath.Combine(repo, "icon.png"), result.Value.IconPath.GetValueOrDefault());
+        Assert.Equal(IOPath.Combine(repo, "icon.png"), result.Value.Icon?.Path);
     }
 
     [Fact]
@@ -80,12 +81,12 @@ public sealed class AppImageIconTests : IDisposable
             </Project>
             """);
 
-        var extractor = new MsbuildMetadataExtractor();
+        var extractor = new ProjectApplicationInfoProvider();
 
-        var result = await extractor.Extract(desktopProjectPath);
+        var result = await extractor.Resolve(desktopProjectPath);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected metadata extraction to succeed.");
-        Assert.Equal(IOPath.Combine(appDir, "Assets", "icon.png"), result.Value.IconPath.GetValueOrDefault());
+        Assert.Equal(IOPath.Combine(appDir, "Assets", "icon.png"), result.Value.Icon?.Path);
     }
 
     [Fact]
@@ -107,12 +108,12 @@ public sealed class AppImageIconTests : IDisposable
             </Project>
             """);
 
-        var extractor = new MsbuildMetadataExtractor();
+        var extractor = new ProjectApplicationInfoProvider();
 
-        var result = await extractor.Extract(projectPath);
+        var result = await extractor.Resolve(projectPath);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected metadata extraction to succeed.");
-        Assert.Equal(packageIconPath, result.Value.IconPath.GetValueOrDefault());
+        Assert.Equal(packageIconPath, result.Value.Icon?.Path);
     }
 
     [Fact]
@@ -134,15 +135,13 @@ public sealed class AppImageIconTests : IDisposable
         var publisher = new FakePublisher(tempDir);
         var packager = new RecordingAppImagePackager();
         var generator = new AppImageGenerator(publisher, packager);
-        var metadata = new ProjectMetadata
-        {
-            ProjectPath = projectPath,
-            AssemblyName = "Sample.Desktop",
-            Version = "1.2.3",
-            IconPath = Maybe<string>.None
-        };
+        var applicationInfo = ApplicationInfoTestFactory.Create(
+            projectPath,
+            assemblyName: "Sample.Desktop",
+            displayName: "Sample",
+            version: "1.2.3");
 
-        var result = await generator.Generate(projectPath, Architecture.X64, metadata, outputDir, Logger.None);
+        var result = await generator.Generate(projectPath, Architecture.X64, applicationInfo, outputDir, Logger.None);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
         Assert.Contains("icon.png", packager.PublishedPaths);
@@ -171,33 +170,40 @@ public sealed class AppImageIconTests : IDisposable
         var publisher = new FakePublisher(tempDir);
         var packager = new RecordingAppImagePackager();
         var generator = new AppImageGenerator(publisher, packager);
-        var metadata = new ProjectMetadata
-        {
-            ProjectPath = projectPath,
-            AssemblyName = "Sample.Desktop",
-            Version = "1.2.3",
-            IconPath = Maybe.From(iconPath)
-        };
+        var applicationInfo = ApplicationInfoTestFactory.Create(
+            projectPath,
+            assemblyName: "Sample.Desktop",
+            displayName: "Sample",
+            version: "1.2.3",
+            iconPath: iconPath);
 
-        var result = await generator.Generate(projectPath, Architecture.X64, metadata, outputDir, Logger.None);
+        var result = await generator.Generate(projectPath, Architecture.X64, applicationInfo, outputDir, Logger.None);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
         Assert.Contains("icon.png", packager.PublishedPaths);
     }
 
     [Fact]
-    public void ProjectMetadata_StripsDesktopSuffixFromImplicitSdkProduct()
+    public async Task ProjectApplicationInfoProvider_StripsDesktopSuffixFromImplicitSdkProduct()
     {
-        var metadata = new ProjectMetadata
-        {
-            ProjectPath = "src/Sample.Desktop/Sample.Desktop.csproj",
-            AssemblyName = "Sample.Desktop",
-            Product = "Sample.Desktop",
-            IconPath = Maybe<string>.None
-        };
+        var repo = CreateRepository();
+        var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
+        var projectPath = IOPath.Combine(projectDir, "Sample.Desktop.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <AssemblyName>Sample.Desktop</AssemblyName>
+                <Product>Sample.Desktop</Product>
+              </PropertyGroup>
+            </Project>
+            """);
 
-        Assert.Equal("Sample", metadata.GetDisplayName());
-        Assert.Equal("Sample", metadata.GetStartupWmClass());
+        var result = await new ProjectApplicationInfoProvider().Resolve(projectPath);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected application info resolution to succeed.");
+        Assert.Equal("Sample", result.Value.DisplayName.Value);
+        Assert.Equal("Sample", result.Value.StartupWmClass?.Value);
     }
 
     [Fact]
@@ -218,16 +224,13 @@ public sealed class AppImageIconTests : IDisposable
         var publisher = new FakePublisher(tempDir);
         var packager = new RecordingAppImagePackager();
         var generator = new AppImageGenerator(publisher, packager);
-        var metadata = new ProjectMetadata
-        {
-            ProjectPath = projectPath,
-            AssemblyName = "Sample.Desktop",
-            Product = "Sample.Desktop",
-            Version = "1.2.3",
-            IconPath = Maybe<string>.None
-        };
+        var applicationInfo = ApplicationInfoTestFactory.Create(
+            projectPath,
+            assemblyName: "Sample.Desktop",
+            displayName: "Sample",
+            version: "1.2.3");
 
-        var result = await generator.Generate(projectPath, Architecture.X64, metadata, outputDir, Logger.None);
+        var result = await generator.Generate(projectPath, Architecture.X64, applicationInfo, outputDir, Logger.None);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
         Assert.Equal("Sample", packager.PackageName);

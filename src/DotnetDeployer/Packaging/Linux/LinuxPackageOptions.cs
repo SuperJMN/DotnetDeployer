@@ -1,28 +1,25 @@
 using DotnetPackaging;
-using ProjectMetadata = DotnetDeployer.Msbuild.ProjectMetadata;
+using DotnetProjectKit;
 
 namespace DotnetDeployer.Packaging.Linux;
 
 internal static class LinuxPackageOptions
 {
-    public static void ApplyProjectMetadata(this FromDirectoryOptions options, ProjectMetadata metadata)
+    public static void ApplyApplicationInfo(this FromDirectoryOptions options, ApplicationInfo applicationInfo)
     {
-        options.WithName(metadata.GetDisplayName());
+        options.WithApplicationInfo(applicationInfo);
+        options.WithName(applicationInfo.DisplayName.Value);
 
-        var startupWmClass = metadata.GetStartupWmClass();
-        if (!string.IsNullOrWhiteSpace(startupWmClass))
+        if (!string.IsNullOrWhiteSpace(applicationInfo.StartupWmClass?.Value))
         {
-            options.WithStartupWmClass(startupWmClass);
+            options.WithStartupWmClass(applicationInfo.StartupWmClass.Value);
         }
 
-        if (metadata.Version != null)
-        {
-            options.WithVersion(metadata.Version);
-        }
+        options.WithVersion(applicationInfo.Version.Value);
 
-        if (metadata.Description != null)
+        if (applicationInfo.Description is not null)
         {
-            options.WithDescription(metadata.Description);
+            options.WithDescription(applicationInfo.Description.Value);
         }
     }
 }

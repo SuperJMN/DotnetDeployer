@@ -1,7 +1,7 @@
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
 using DotnetDeployer.Domain;
-using DotnetDeployer.Msbuild;
+using DotnetProjectKit;
 using Serilog;
 using Zafiro.Commands;
 using ICommand = Zafiro.Commands.ICommand;
@@ -30,7 +30,7 @@ public class AabGenerator : IPackageGenerator
     public async Task<Result<GeneratedPackage>> Generate(
         string projectPath,
         Architecture arch,
-        ProjectMetadata metadata,
+        ApplicationInfo applicationInfo,
         string outputPath,
         ILogger logger)
     {
@@ -47,10 +47,10 @@ public class AabGenerator : IPackageGenerator
         if (signing.IsConfigured)
             logger.Information("AAB will be release-signed");
 
-        var targetFramework = metadata.AndroidTargetFramework ?? "net9.0-android";
+        var targetFramework = applicationInfo.AndroidTargetFramework?.Value ?? "net9.0-android";
 
         // Run dotnet publish for Android with AAB output
-        var versionArgs = AndroidVersionHelper.GetVersionArgs(metadata.Version);
+        var versionArgs = AndroidVersionHelper.GetVersionArgs(applicationInfo.Version.Value);
         var signingArgs = signing.GetSigningArgs();
         var publishArgs = $"-c Release -f {targetFramework} -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}";
         logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
@@ -95,7 +95,7 @@ public class AabGenerator : IPackageGenerator
         logger.Debug("Found AAB: {Aab} in {Dir}", aabFiles[0], foundInDir);
 
         // Use standardized naming
-        var fileName = PackageNaming.GetFileName(metadata.GetDisplayName(), metadata.Version ?? "1.0.0", PackageType.Aab, arch);
+        var fileName = PackageNaming.GetFileName(applicationInfo.DisplayName.Value, applicationInfo.Version.Value, PackageType.Aab, arch);
         var destAab = IOPath.Combine(outputPath, fileName);
         File.Copy(aabFiles[0], destAab, overwrite: true);
 

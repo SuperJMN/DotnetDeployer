@@ -31,7 +31,7 @@ public static class PackageNaming
 
     private static string GetPlatform(PackageType type) => type switch
     {
-        PackageType.AppImage or PackageType.Deb or PackageType.Rpm or PackageType.Flatpak => "linux",
+        PackageType.AppImage or PackageType.Deb or PackageType.Rpm => "linux",
         PackageType.ExeSfx or PackageType.ExeSetup or PackageType.Msix => "windows",
         PackageType.Dmg => "macos",
         PackageType.Apk or PackageType.Aab => "android",
@@ -66,7 +66,6 @@ public static class PackageNaming
         PackageType.AppImage => "appimage",
         PackageType.Deb => "deb",
         PackageType.Rpm => "rpm",
-        PackageType.Flatpak => "flatpak",
         PackageType.ExeSfx => "sfx.exe",
         PackageType.ExeSetup => "setup.exe",
         PackageType.Msix => "msix",

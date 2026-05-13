@@ -24,7 +24,6 @@ public class PackageFormatConfig
             "appimage" => PackageType.AppImage,
             "deb" => PackageType.Deb,
             "rpm" => PackageType.Rpm,
-            "flatpak" => PackageType.Flatpak,
             "exe-sfx" or "exesfx" or "sfx" => PackageType.ExeSfx,
             "exe-setup" or "exesetup" or "setup" => PackageType.ExeSetup,
             "msix" => PackageType.Msix,

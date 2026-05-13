@@ -29,6 +29,7 @@ public class PackageTargetTests
     [Theory]
     [InlineData("")]
     [InlineData("exe-setup")]
+    [InlineData("flatpak:x64")]
     [InlineData("unknown:x64")]
     [InlineData("deb:weird")]
     public void Parse_WhenInvalid_ShouldFail(string raw)

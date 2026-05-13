@@ -2,6 +2,13 @@
 
 ## Goal
 
+See also `shared-application-info-audit.md`. The shared-publish work should use
+that future `ApplicationInfo` abstraction for application metadata, assets,
+desktop identity and overrides instead of adding more deployer-local metadata
+logic.
+
+## Original Goal
+
 Make DotnetDeployer the build/release orchestrator that can generate selected binary packages without publishing them, while preserving DotnetPackaging project metadata behavior and avoiding redundant `dotnet publish` runs.
 
 DotnetDeployer remains responsible for:
@@ -137,4 +144,3 @@ dotnet dnx dotnetdeployer.tool --package-only --help
 ```
 
 Verify that the newly published tool exposes the package-only options before wiring Fleet to it.
-
