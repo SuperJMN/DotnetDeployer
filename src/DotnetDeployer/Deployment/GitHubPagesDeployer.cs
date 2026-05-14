@@ -33,7 +33,7 @@ public class GitHubPagesDeployer : IGitHubPagesDeployer
         string? token = null;
         if (config.Token is not null)
         {
-            var resolver = new ValueSourceResolver(new SecretsReader());
+            var resolver = new ValueSourceResolver(new DefaultSecretsReader());
             var resolved = config.Token.ToValueSource().Bind(resolver.Resolve);
             if (resolved.IsFailure && !dryRun)
                 return Result.Failure($"Failed to resolve GitHub Pages token: {resolved.Error}");

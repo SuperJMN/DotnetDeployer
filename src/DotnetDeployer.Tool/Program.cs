@@ -64,6 +64,7 @@ public static class Program
         rootCommand.Add(packageProjectOption);
         rootCommand.Add(packageTargetOption);
         rootCommand.Add(outputDirOption);
+        rootCommand.Add(SecretsCommandFactory.Create(Log.Logger));
 
         var exitCode = 0;
 

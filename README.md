@@ -36,7 +36,9 @@ version: 1
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
-  apiKeyEnvVar: NUGET_API_KEY
+  apiKey:
+    from: secret
+    key: nuget_api_key
 ```
 
 ### 2. Run the tool
@@ -47,6 +49,7 @@ dotnet run --project path/to/DotnetDeployer.Tool.csproj
 
 # Or install as a global tool
 dotnet tool install -g DotnetDeployer.Tool
+dotnetdeployer secrets set nuget_api_key
 dotnetdeployer
 ```
 
@@ -68,13 +71,17 @@ version: 1
 nuget:
   enabled: true
   source: https://api.nuget.org/v3/index.json
-  apiKeyEnvVar: NUGET_API_KEY
+  apiKey:
+    from: secret
+    key: nuget_api_key
 
 github:
   enabled: true
   owner: YourGitHubUsername
   repo: YourRepo
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: secret
+    key: github_token
   outputDir: artifacts
   
   packages:
@@ -93,7 +100,9 @@ githubPages:
   enabled: true
   owner: YourGitHubUsername
   repo: MyApp-Pages
-  tokenEnvVar: GITHUB_TOKEN
+  token:
+    from: secret
+    key: github_token
   project: src/MyApp.Browser/MyApp.Browser.csproj
 ```
 
@@ -110,6 +119,16 @@ githubPages:
 | `--package-project` | Select one `github.packages[].project` entry when the YAML has multiple package projects |
 | `--package-target` | Generate a target in `<type>:<arch>` form, e.g. `exe-setup:x64`; can be repeated |
 | `--output-dir` | Override the directory where generated packages are written |
+
+Secrets are managed with a subcommand:
+
+```bash
+dotnetdeployer secrets set nuget_api_key
+dotnetdeployer secrets check nuget_api_key
+dotnetdeployer secrets delete nuget_api_key
+```
+
+`secrets set` stores values in the system keyring: Windows Credential Manager, macOS Keychain, or Linux Secret Service through `secret-tool`. A `from: secret` value still reads `deployer.secrets.yaml` first, then falls back to the keyring.
 
 Generate only selected packages:
 
@@ -184,9 +203,13 @@ android:
     keystore:
       from: file
       path: ./android/release.keystore
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: secret
+      key: android_store_pass
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: secret
+      key: android_key_pass
 ```
 
 ### Source 2: Environment variable (base64)
@@ -198,12 +221,16 @@ android:
       from: env
       name: ANDROID_KEYSTORE_BASE64
       encoding: base64
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: secret
+      key: android_store_pass
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: secret
+      key: android_key_pass
 ```
 
-### Source 3: Secrets file (base64)
+### Source 3: Named secret (keyring or secrets file)
 
 ```yaml
 android:
@@ -212,15 +239,21 @@ android:
       from: secret
       key: android_keystore_base64
       encoding: base64
-    storePasswordEnvVar: ANDROID_STORE_PASS
+    storePassword:
+      from: secret
+      key: android_store_pass
     keyAlias: release-key
-    keyPasswordEnvVar: ANDROID_KEY_PASS
+    keyPassword:
+      from: secret
+      key: android_key_pass
 ```
 
-With a `deployer.secrets.yaml` in the repo root (add to `.gitignore`):
+Store these values with `dotnetdeployer secrets set <key>`, or use a `deployer.secrets.yaml` in the repo root (add it to `.gitignore`):
 
 ```yaml
 android_keystore_base64: <base64-encoded-keystore-content>
+android_store_pass: <store-password>
+android_key_pass: <key-password>
 ```
 
 ### Encoding your keystore
@@ -253,7 +286,11 @@ github:
               from: env
               name: ANDROID_KEYSTORE_BASE64
               encoding: base64
-            storePasswordEnvVar: ANDROID_STORE_PASS
+            storePassword:
+              from: secret
+              key: android_store_pass
             keyAlias: release-key
-            keyPasswordEnvVar: ANDROID_KEY_PASS
+            keyPassword:
+              from: secret
+              key: android_key_pass
 ```

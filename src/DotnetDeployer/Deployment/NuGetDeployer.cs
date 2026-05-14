@@ -37,7 +37,7 @@ public class NuGetDeployer : INuGetDeployer
             string? apiKey = null;
             if (config.ApiKey is not null)
             {
-                var resolver = new ValueSourceResolver(new SecretsReader());
+                var resolver = new ValueSourceResolver(new DefaultSecretsReader());
                 var resolved = config.ApiKey.ToValueSource().Bind(resolver.Resolve);
                 if (resolved.IsFailure && !dryRun)
                     throw new InvalidOperationException($"Failed to resolve NuGet API key: {resolved.Error}");

@@ -206,9 +206,12 @@ public class AndroidPrerequisitesInstaller
                 {
                     foreach (var f in Directory.EnumerateFiles(binDir))
                     {
-                        try { File.SetUnixFileMode(f, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                        try
+                        {
+                            File.SetUnixFileMode(f, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
                                                        | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
-                                                       | UnixFileMode.OtherRead | UnixFileMode.OtherExecute); }
+                                                       | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                        }
                         catch { /* best effort */ }
                     }
                 }

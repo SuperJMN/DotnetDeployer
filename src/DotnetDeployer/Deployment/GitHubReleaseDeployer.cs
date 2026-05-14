@@ -37,7 +37,7 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
             string? token = null;
             if (config.Token is not null)
             {
-                var resolver = new ValueSourceResolver(new SecretsReader());
+                var resolver = new ValueSourceResolver(new DefaultSecretsReader());
                 var resolved = config.Token.ToValueSource().Bind(resolver.Resolve);
                 if (resolved.IsFailure && !dryRun)
                     throw new InvalidOperationException($"Failed to resolve GitHub token: {resolved.Error}");

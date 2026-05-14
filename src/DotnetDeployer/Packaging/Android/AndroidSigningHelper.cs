@@ -23,7 +23,7 @@ public sealed class AndroidSigningHelper : IDisposable
 
     public static Result<AndroidSigningHelper> Create(AndroidSigningConfig? config, ILogger logger)
     {
-        return Create(config, logger, new SecretsReader(), Environment.GetEnvironmentVariable);
+        return Create(config, logger, new DefaultSecretsReader(), Environment.GetEnvironmentVariable);
     }
 
     public static Result<AndroidSigningHelper> Create(

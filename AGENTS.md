@@ -361,7 +361,7 @@ All sensitive or configurable tokens (`nuget.apiKey`, `github.token`, `githubPag
 |--------|---------------|-------------|
 | `literal` | `value` | Value written directly in YAML |
 | `env` | `name` | Read from an environment variable |
-| `secret` | `key` | Read from `deployer.secrets.yaml` |
+| `secret` | `key` | Read from `deployer.secrets.yaml`; if missing, read from the system keyring |
 | `file` | `path` | Read from a file on disk |
 
 All sources except `literal` and `file` support an optional `encoding` field (`raw` or `base64`).
@@ -497,6 +497,16 @@ android_store_pass: secretpassword
 
 **Important**: Add `deployer.secrets.yaml` to `.gitignore`.
 
+Secrets can also be stored in the system keyring and referenced with the same `from: secret` syntax:
+
+```bash
+dotnetdeployer secrets set nuget_api_key
+dotnetdeployer secrets check nuget_api_key
+dotnetdeployer secrets delete nuget_api_key
+```
+
+The keyring backend is Windows Credential Manager, macOS Keychain, or Linux Secret Service via `secret-tool`. `from: secret` resolves `deployer.secrets.yaml` first for backward compatibility, then falls back to the system keyring.
+
 To encode a keystore as base64:
 
 ```bash
@@ -515,4 +525,4 @@ base64 -w 0 < your-release.keystore
 | GitHub release fails | Ensure `GITHUB_TOKEN` has `repo` scope |
 | Android keystore invalid base64 | Re-encode with `base64 -w 0 < your.keystore` |
 | Android signing env var missing | Check all `ANDROID_*` vars are mapped in pipeline `env:` block |
-| Secret key not found | Ensure `deployer.secrets.yaml` exists and contains the key |
+| Secret key not found | Ensure `deployer.secrets.yaml` contains the key, or store it with `dotnetdeployer secrets set <key>` |

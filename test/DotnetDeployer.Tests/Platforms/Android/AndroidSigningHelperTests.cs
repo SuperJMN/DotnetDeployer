@@ -43,17 +43,17 @@ public class AndroidSigningHelperTests : IDisposable
         string storePassEnvVar = "TEST_KS_PASS",
         string keyAlias = "test-key",
         string keyPassEnvVar = "TEST_KEY_PASS") => new()
-    {
-        Keystore = new KeystoreSourceConfig
         {
-            From = "env",
-            Name = envVarName,
-            Encoding = "base64"
-        },
-        StorePassword = new ValueSourceConfig { From = "env", Name = storePassEnvVar },
-        KeyAlias = ValueSourceConfig.Literal(keyAlias),
-        KeyPassword = new ValueSourceConfig { From = "env", Name = keyPassEnvVar }
-    };
+            Keystore = new KeystoreSourceConfig
+            {
+                From = "env",
+                Name = envVarName,
+                Encoding = "base64"
+            },
+            StorePassword = new ValueSourceConfig { From = "env", Name = storePassEnvVar },
+            KeyAlias = ValueSourceConfig.Literal(keyAlias),
+            KeyPassword = new ValueSourceConfig { From = "env", Name = keyPassEnvVar }
+        };
 
     [Fact]
     public void NullConfig_ReturnsSuccess_NotConfigured_WithWarning()
