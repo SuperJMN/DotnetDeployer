@@ -4,11 +4,11 @@ using DotnetDeployer.Packaging;
 
 namespace DotnetDeployer.Tests.Packaging;
 
-public class NupkgReadmeInjectorTests : IDisposable
+public class NupkgReleaseNotesInjectorTests : IDisposable
 {
     private readonly string tempDir;
 
-    public NupkgReadmeInjectorTests()
+    public NupkgReleaseNotesInjectorTests()
     {
         tempDir = Path.Combine(Path.GetTempPath(), "dotnetdeployer-nupkg-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -20,49 +20,46 @@ public class NupkgReadmeInjectorTests : IDisposable
     }
 
     [Fact]
-    public void Inject_AddsReadmeAndPatchesNuspec_WhenNoReadmeOrTag()
+    public void Inject_AddsReleaseNotes_WhenNoReleaseNotes()
     {
         var pkg = CreateNupkg("MyPkg", nuspecMetadataExtras: "");
 
-        var result = NupkgReadmeInjector.Inject(pkg, "# Hello\n- change", Serilog.Core.Logger.None);
+        var result = NupkgReleaseNotesInjector.Inject(pkg, "# Changelog\n- change", Serilog.Core.Logger.None);
 
         Assert.True(result.IsSuccess);
-        AssertReadmeContent(pkg, "# Hello\n- change");
-        AssertNuspecReadmeTag(pkg, "README.md");
+        AssertNuspecValue(pkg, "releaseNotes", "# Changelog\n- change");
     }
 
     [Fact]
-    public void Inject_ReplacesExistingReadme()
+    public void Inject_ReplacesExistingReleaseNotes()
     {
-        var pkg = CreateNupkg("MyPkg", nuspecMetadataExtras: "<readme>OLD.md</readme>", extraEntries: new()
-        {
-            ["README.md"] = "old contents"
-        });
+        var pkg = CreateNupkg("MyPkg", nuspecMetadataExtras: "<releaseNotes>old notes</releaseNotes>");
 
-        var result = NupkgReadmeInjector.Inject(pkg, "new contents", Serilog.Core.Logger.None);
+        var result = NupkgReleaseNotesInjector.Inject(pkg, "new notes", Serilog.Core.Logger.None);
 
         Assert.True(result.IsSuccess);
-        AssertReadmeContent(pkg, "new contents");
-        AssertNuspecReadmeTag(pkg, "README.md");
+        AssertNuspecValue(pkg, "releaseNotes", "new notes");
     }
 
     [Fact]
-    public void Inject_PreservesOtherNuspecMetadata()
+    public void Inject_PreservesReadmeAndOtherMetadata()
     {
-        var pkg = CreateNupkg("MyPkg", nuspecMetadataExtras: "<description>hi</description><authors>me</authors>");
+        var pkg = CreateNupkg(
+            "MyPkg",
+            nuspecMetadataExtras: "<readme>README.md</readme><description>hi</description><authors>me</authors>",
+            extraEntries: new()
+            {
+                ["README.md"] = "package readme"
+            });
 
-        var result = NupkgReadmeInjector.Inject(pkg, "log", Serilog.Core.Logger.None);
+        var result = NupkgReleaseNotesInjector.Inject(pkg, "release notes", Serilog.Core.Logger.None);
 
         Assert.True(result.IsSuccess);
-        using var zip = ZipFile.OpenRead(pkg);
-        var nuspec = zip.Entries.First(e => e.Name.EndsWith(".nuspec"));
-        using var s = nuspec.Open();
-        var doc = XDocument.Load(s);
-        var ns = doc.Root!.GetDefaultNamespace();
-        var meta = doc.Root.Element(ns + "metadata")!;
-        Assert.Equal("hi", meta.Element(ns + "description")!.Value);
-        Assert.Equal("me", meta.Element(ns + "authors")!.Value);
-        Assert.Equal("README.md", meta.Element(ns + "readme")!.Value);
+        AssertEntryContent(pkg, "README.md", "package readme");
+        AssertNuspecValue(pkg, "readme", "README.md");
+        AssertNuspecValue(pkg, "description", "hi");
+        AssertNuspecValue(pkg, "authors", "me");
+        AssertNuspecValue(pkg, "releaseNotes", "release notes");
     }
 
     private string CreateNupkg(string id, string nuspecMetadataExtras, Dictionary<string, string>? extraEntries = null)
@@ -102,17 +99,17 @@ public class NupkgReadmeInjectorTests : IDisposable
         return path;
     }
 
-    private static void AssertReadmeContent(string pkg, string expected)
+    private static void AssertEntryContent(string pkg, string entryName, string expected)
     {
         using var zip = ZipFile.OpenRead(pkg);
-        var entry = zip.GetEntry("README.md");
+        var entry = zip.GetEntry(entryName);
         Assert.NotNull(entry);
         using var s = entry!.Open();
         using var r = new StreamReader(s);
         Assert.Equal(expected, r.ReadToEnd());
     }
 
-    private static void AssertNuspecReadmeTag(string pkg, string expectedFile)
+    private static void AssertNuspecValue(string pkg, string elementName, string expectedValue)
     {
         using var zip = ZipFile.OpenRead(pkg);
         var nuspec = zip.Entries.FirstOrDefault(e => !e.FullName.Contains('/') && e.Name.EndsWith(".nuspec"));
@@ -120,8 +117,8 @@ public class NupkgReadmeInjectorTests : IDisposable
         using var s = nuspec!.Open();
         var doc = XDocument.Load(s);
         var ns = doc.Root!.GetDefaultNamespace();
-        var readme = doc.Root.Element(ns + "metadata")?.Element(ns + "readme");
-        Assert.NotNull(readme);
-        Assert.Equal(expectedFile, readme!.Value);
+        var element = doc.Root.Element(ns + "metadata")?.Element(ns + elementName);
+        Assert.NotNull(element);
+        Assert.Equal(expectedValue, element!.Value);
     }
 }

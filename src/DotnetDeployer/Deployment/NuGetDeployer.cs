@@ -97,20 +97,20 @@ public class NuGetDeployer : INuGetDeployer
                 changelog = changelogResult.Value;
                 foreach (var package in packages)
                 {
-                    var injectResult = NupkgReadmeInjector.Inject(package, changelog, logger);
+                    var injectResult = NupkgReleaseNotesInjector.Inject(package, changelog, logger);
                     if (injectResult.IsFailure)
                     {
-                        logger.Warning("Could not inject README into {Package}: {Error}", Path.GetFileName(package), injectResult.Error);
+                        logger.Warning("Could not inject release notes into {Package}: {Error}", Path.GetFileName(package), injectResult.Error);
                     }
                     else
                     {
-                        logger.Debug("Injected changelog README into {Package}", Path.GetFileName(package));
+                        logger.Debug("Injected release notes into {Package}", Path.GetFileName(package));
                     }
                 }
             }
             else
             {
-                logger.Warning("Skipping README injection: {Error}", changelogResult.Error);
+                logger.Warning("Skipping release notes injection: {Error}", changelogResult.Error);
             }
 
             foreach (var package in packages)
