@@ -130,6 +130,8 @@ dotnetdeployer secrets delete nuget_api_key
 
 `secrets set` stores values in the system keyring: Windows Credential Manager, macOS Keychain, or Linux Secret Service through `secret-tool`. A `from: secret` value still reads `deployer.secrets.yaml` first, then falls back to the keyring.
 
+See [Secret Management](docs/secrets.md) for the full keyring, Android signing, and CI guidance.
+
 Generate only selected packages:
 
 ```bash
