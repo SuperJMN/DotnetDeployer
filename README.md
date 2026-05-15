@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/SmallLogo.png" alt="DotnetDeployer logo" width="160" />
+</p>
+
 # DotnetDeployer
 
 **Deploy your .NET projects with a single YAML file. No scripts. No ceremony. Just ship it.**
