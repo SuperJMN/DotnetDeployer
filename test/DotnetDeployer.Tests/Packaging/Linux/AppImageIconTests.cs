@@ -237,6 +237,38 @@ public sealed class AppImageIconTests : IDisposable
         Assert.Equal("Sample.Desktop", packager.StartupWmClass);
     }
 
+    [Fact]
+    public async Task Generator_PassesProjectDescriptionToAppImagePackager()
+    {
+        var repo = CreateRepository();
+        var projectDir = Directory.CreateDirectory(IOPath.Combine(repo, "src", "Sample.Desktop")).FullName;
+        var projectPath = IOPath.Combine(projectDir, "Sample.Desktop.csproj");
+        await File.WriteAllTextAsync(projectPath, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var outputDir = Directory.CreateDirectory(IOPath.Combine(tempDir, "packages")).FullName;
+        var publisher = new FakePublisher(tempDir);
+        var packager = new RecordingAppImagePackager();
+        var generator = new AppImageGenerator(publisher, packager);
+        var applicationInfo = ApplicationInfoTestFactory.Create(
+            projectPath,
+            assemblyName: "Sample.Desktop",
+            displayName: "Sample",
+            version: "1.2.3",
+            description: "Coordinates remote deployments.");
+
+        var result = await generator.Generate(projectPath, Architecture.X64, applicationInfo, outputDir, Logger.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error : "Expected AppImage generation to succeed.");
+        Assert.Equal("Coordinates remote deployments.", packager.Description);
+        Assert.Equal("Coordinates remote deployments.", packager.Comment);
+    }
+
     private string CreateRepository()
     {
         var repo = Directory.CreateDirectory(IOPath.Combine(tempDir, Guid.NewGuid().ToString("N"))).FullName;
@@ -261,6 +293,8 @@ public sealed class AppImageIconTests : IDisposable
         public IReadOnlyCollection<string> PublishedPaths { get; private set; } = [];
         public string? PackageName { get; private set; }
         public string? StartupWmClass { get; private set; }
+        public string? Description { get; private set; }
+        public string? Comment { get; private set; }
 
         public async Task<Result> PackPublishedProject(
             IContainer publishedProject,
@@ -274,6 +308,8 @@ public sealed class AppImageIconTests : IDisposable
                 .ToArray();
             PackageName = metadata.PackageOptions.Name.GetValueOrDefault();
             StartupWmClass = metadata.PackageOptions.StartupWmClass.GetValueOrDefault();
+            Description = metadata.PackageOptions.Description.GetValueOrDefault();
+            Comment = metadata.PackageOptions.Comment.GetValueOrDefault();
 
             await File.WriteAllTextAsync(outputPath, "fake appimage");
             return Result.Success();

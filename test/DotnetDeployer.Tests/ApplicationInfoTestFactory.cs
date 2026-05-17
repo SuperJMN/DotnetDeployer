@@ -11,6 +11,7 @@ internal static class ApplicationInfoTestFactory
         string? version = "1.0.0",
         string? androidTargetFramework = null,
         string? company = null,
+        string? description = null,
         string? iconPath = null)
     {
         displayName ??= assemblyName;
@@ -26,6 +27,11 @@ internal static class ApplicationInfoTestFactory
         if (company is not null)
         {
             values["Company"] = company;
+        }
+
+        if (description is not null)
+        {
+            values["Description"] = description;
         }
 
         if (androidTargetFramework is not null)
@@ -44,6 +50,7 @@ internal static class ApplicationInfoTestFactory
             Version = new ResolvedValue<string>(version, ApplicationInfoSource.Msbuild),
             StartupWmClass = new ResolvedValue<string>(displayName, ApplicationInfoSource.Convention),
             Company = company is null ? null : new ResolvedValue<string>(company, ApplicationInfoSource.Msbuild),
+            Description = description is null ? null : new ResolvedValue<string>(description, ApplicationInfoSource.Msbuild),
             AndroidTargetFramework = androidTargetFramework is null
                 ? null
                 : new ResolvedValue<string>(androidTargetFramework, ApplicationInfoSource.Msbuild),
