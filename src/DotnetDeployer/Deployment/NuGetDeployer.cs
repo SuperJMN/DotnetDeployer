@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Text;
 using CSharpFunctionalExtensions;
 using DotnetDeployer.Configuration;
 using DotnetDeployer.Configuration.Secrets;
@@ -19,11 +17,16 @@ public class NuGetDeployer : INuGetDeployer
 {
     private readonly ICommand command;
     private readonly ChangelogService changelogService;
+    private readonly INuGetPushProcessRunner pushProcessRunner;
 
-    public NuGetDeployer(ICommand? command = null, ChangelogService? changelogService = null)
+    public NuGetDeployer(
+        ICommand? command = null,
+        ChangelogService? changelogService = null,
+        INuGetPushProcessRunner? pushProcessRunner = null)
     {
         this.command = command ?? new Command(Maybe<ILogger>.None);
         this.changelogService = changelogService ?? new ChangelogService(this.command);
+        this.pushProcessRunner = pushProcessRunner ?? new DefaultNuGetPushProcessRunner();
     }
 
     public async Task<Result> Deploy(string solutionPath, NuGetConfig config, string version, bool dryRun, ILogger logger)
@@ -60,8 +63,7 @@ public class NuGetDeployer : INuGetDeployer
                     logger.Debug("Removing {Count} stale package(s) from {Dir}", stale.Length, nupkgDir);
                     foreach (var f in stale)
                     {
-                        try { File.Delete(f); }
-                        catch (Exception ex) { logger.Warning(ex, "Could not delete stale package {File}", f); }
+                        File.Delete(f);
                     }
                 }
             }
@@ -77,15 +79,13 @@ public class NuGetDeployer : INuGetDeployer
             // Find generated .nupkg files
             if (!Directory.Exists(nupkgDir))
             {
-                logger.Warning("No nupkg directory found, no packages to deploy");
-                return;
+                throw new InvalidOperationException("No nupkg directory found after packing; no packages to deploy.");
             }
 
             var packages = Directory.GetFiles(nupkgDir, "*.nupkg");
             if (packages.Length == 0)
             {
-                logger.Warning("No .nupkg files found to deploy");
-                return;
+                throw new InvalidOperationException("No .nupkg files found after packing; no packages to deploy.");
             }
 
             logger.Information("Found {Count} packages to deploy", packages.Length);
@@ -129,7 +129,7 @@ public class NuGetDeployer : INuGetDeployer
 
                 if (pushResult.IsFailure)
                 {
-                    logger.Warning("Failed to push {Package}: {Error}", packageName, pushResult.Error);
+                    throw new InvalidOperationException($"Failed to push {packageName}: {pushResult.Error}");
                 }
                 else
                 {
@@ -139,7 +139,7 @@ public class NuGetDeployer : INuGetDeployer
         });
     }
 
-    private static async Task<Result<string>> PushPackage(
+    private async Task<Result<string>> PushPackage(
         string package,
         string apiKey,
         string source,
@@ -152,48 +152,15 @@ public class NuGetDeployer : INuGetDeployer
             source,
             workingDirectory);
 
-        var psi = new ProcessStartInfo("dotnet")
-        {
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
+        var result = await pushProcessRunner.Run(
+            package,
+            apiKey,
+            source,
+            workingDirectory).ConfigureAwait(false);
+        var sanitizedOutput = result.CombinedOutput.Replace(apiKey, "***HIDDEN***", StringComparison.Ordinal);
 
-        psi.ArgumentList.Add("nuget");
-        psi.ArgumentList.Add("push");
-        psi.ArgumentList.Add(package);
-        psi.ArgumentList.Add("--api-key");
-        psi.ArgumentList.Add(apiKey);
-        psi.ArgumentList.Add("--source");
-        psi.ArgumentList.Add(source);
-        psi.ArgumentList.Add("--skip-duplicate");
-
-        using var process = new Process { StartInfo = psi };
-        var output = new StringBuilder();
-        var gate = new object();
-
-        void Append(string? line)
-        {
-            if (line is null) return;
-            lock (gate)
-            {
-                output.AppendLine(line);
-            }
-        }
-
-        process.OutputDataReceived += (_, e) => Append(e.Data);
-        process.ErrorDataReceived += (_, e) => Append(e.Data);
-
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        await process.WaitForExitAsync().ConfigureAwait(false);
-
-        var sanitizedOutput = output.ToString().Replace(apiKey, "***HIDDEN***", StringComparison.Ordinal);
-        if (process.ExitCode != 0)
-            return Result.Failure<string>($"dotnet nuget push exited with code {process.ExitCode}:{Environment.NewLine}{sanitizedOutput}");
+        if (result.ExitCode != 0)
+            return Result.Failure<string>($"dotnet nuget push exited with code {result.ExitCode}:{Environment.NewLine}{sanitizedOutput}");
 
         if (!string.IsNullOrWhiteSpace(sanitizedOutput))
             logger.Debug("Command succeeded:{NewLine}{Output}", Environment.NewLine, sanitizedOutput.TrimEnd());
