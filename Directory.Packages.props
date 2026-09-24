@@ -5,7 +5,8 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <DotnetPackagingVersion>10.1.35</DotnetPackagingVersion>
     <DotnetProjectKitVersion>0.0.4</DotnetProjectKitVersion>
-    <ZafiroVersion>47.0.8</ZafiroVersion>
+    <!-- 47.0.8 references ReactiveUI assembly 23.1.0, while the re-signed 23.2.28 package contains assembly 23.0.0. -->
+    <ZafiroVersion>47.1.1</ZafiroVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
