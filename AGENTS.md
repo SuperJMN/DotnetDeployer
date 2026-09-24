@@ -519,7 +519,7 @@ base64 -w 0 < your-release.keystore
 
 | Issue | Solution |
 |-------|----------|
-| Version is always `1.0.0` | Ensure `fetchDepth: 0` in checkout step |
+| Version resolution fails | Fetch full history (`fetchDepth: 0`) and use a named branch at the exact commit, or pass an explicit version override |
 | GitVersion not found | Tool auto-installs, but ensure .NET SDK 8.0+ is available |
 | NuGet push fails | Check `NUGET_API_KEY` is set correctly in variable group |
 | GitHub release fails | Ensure `GITHUB_TOKEN` has `repo` scope |

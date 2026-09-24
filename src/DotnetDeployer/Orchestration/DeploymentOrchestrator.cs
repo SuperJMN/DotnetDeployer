@@ -74,11 +74,17 @@ public class DeploymentOrchestrator
                 var errors = new List<string>();
 
                 // Determine effective version early for logging and CI build naming
-                string version;
-                using (phases.BeginPhase("version.resolve"))
+                Result<string> versionResult;
+                using (var versionPhase = phases.BeginPhase("version.resolve"))
                 {
-                    version = await DetermineVersion(configDir, options, logger);
+                    versionResult = await DetermineVersion(configDir, options, logger);
+                    if (versionResult.IsFailure)
+                        versionPhase.MarkFailure();
                 }
+                if (versionResult.IsFailure)
+                    return Result.Failure(versionResult.Error);
+
+                var version = versionResult.Value;
                 logger.Information("Effective version: {Version}", version);
 
                 // Emit Azure Pipelines build naming command (##vso pattern)
@@ -179,7 +185,7 @@ public class DeploymentOrchestrator
                         ("owner", config.GitHub.Owner ?? ""),
                         ("repo", config.GitHub.Repo ?? ""),
                         ("version", version));
-                    var githubResult = await DeployGitHub(config.GitHub, configDir, options, logger);
+                    var githubResult = await DeployGitHub(config.GitHub, configDir, version, options, logger);
                     if (githubResult.IsFailure)
                     {
                         githubPhase.MarkFailure();
@@ -213,33 +219,33 @@ public class DeploymentOrchestrator
 
     /// <summary>
     /// Determines the effective version for the deployment.
-    /// Uses GitVersion if available, otherwise falls back to 1.0.0.
+    /// Uses an explicit override or GitVersion, and fails before packaging if neither works.
     /// </summary>
-    private async Task<string> DetermineVersion(string configDir, DeployOptions options, ILogger logger)
+    private async Task<Result<string>> DetermineVersion(string configDir, DeployOptions options, ILogger logger)
     {
         if (!string.IsNullOrEmpty(options.VersionOverride))
         {
             logger.Debug("Using version override: {Version}", options.VersionOverride);
-            return options.VersionOverride;
+            return Result.Success(options.VersionOverride);
         }
 
         var gitVersionResult = await gitVersionService.GetVersion(configDir, logger);
         if (gitVersionResult.IsSuccess)
         {
-            return gitVersionResult.Value;
+            return gitVersionResult;
         }
 
-        logger.Warning("GitVersion failed, using fallback version 1.0.0: {Error}", gitVersionResult.Error);
-        return "1.0.0";
+        logger.Error("Version resolution failed: {Error}", gitVersionResult.Error);
+        return Result.Failure<string>($"Version resolution failed: {gitVersionResult.Error}");
     }
 
     private async Task<Result> DeployGitHub(
         GitHubConfig config,
         string configDir,
+        string version,
         DeployOptions options,
         ILogger logger)
     {
-        var version = await DetermineVersion(configDir, options, logger);
         logger.Information("Deploying version {Version}", version);
 
         var packagesResult = await GeneratePackages(config, configDir, version, logger);
