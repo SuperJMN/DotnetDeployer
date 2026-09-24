@@ -1,4 +1,4 @@
-using System.Reflection;
+using Zafiro.DivineBytes;
 using Zafiro.Reactive;
 
 namespace DotnetDeployer.Tests.Packaging.Linux;
@@ -6,21 +6,11 @@ namespace DotnetDeployer.Tests.Packaging.Linux;
 public class RuntimeDependencyCompatibilityTests
 {
     [Fact]
-    public void Zafiro_reference_matches_packaged_reactiveui_assembly()
+    public void Non_ui_dependencies_do_not_reference_reactiveui()
     {
-        var referencedVersion = typeof(ObservableMixin).Assembly
-            .GetReferencedAssemblies()
-            .SingleOrDefault(assembly => assembly.Name == "ReactiveUI")?.Version;
-
-        if (referencedVersion is null)
+        foreach (var assembly in new[] { typeof(ObservableMixin).Assembly, typeof(IByteSource).Assembly })
         {
-            return;
+            Assert.DoesNotContain(assembly.GetReferencedAssemblies(), reference => reference.Name == "ReactiveUI");
         }
-
-        var packagedAssemblyPath = Path.Combine(AppContext.BaseDirectory, "ReactiveUI.dll");
-        Assert.True(File.Exists(packagedAssemblyPath));
-
-        var packagedVersion = AssemblyName.GetAssemblyName(packagedAssemblyPath).Version;
-        Assert.Equal(referencedVersion, packagedVersion);
     }
 }
