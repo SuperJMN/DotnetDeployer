@@ -28,6 +28,7 @@ public class PackageFormatConfig
             "exe-setup" or "exesetup" or "setup" => PackageType.ExeSetup,
             "msix" => PackageType.Msix,
             "windows-zip" => PackageType.WindowsZip,
+            "windows-single-file" => PackageType.WindowsSingleFile,
             "dmg" => PackageType.Dmg,
             "apk" => PackageType.Apk,
             "aab" => PackageType.Aab,

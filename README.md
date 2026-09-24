@@ -191,7 +191,7 @@ The tool automatically outputs `##vso[build.updatebuildnumber]` to set the build
 | Platform | Types |
 |----------|-------|
 | Linux | AppImage, DEB, RPM |
-| Windows | EXE (self-extracting), EXE (setup wizard), MSIX |
+| Windows | Single-file portable EXE, setup EXE, ZIP, MSIX |
 | macOS | DMG |
 | Android | APK, AAB |
 

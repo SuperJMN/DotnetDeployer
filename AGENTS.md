@@ -95,7 +95,7 @@ githubPages:
 | `github` | `repo` | Repository name |
 | `github` | `token` | GitHub token — flexible value source |
 | `github` | `outputDir` | Local directory for generated packages |
-| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `windows-zip`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
+| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `windows-single-file`, `windows-zip`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
 | `githubPages` | `project` | Path to the WebAssembly project to deploy |
@@ -112,10 +112,15 @@ githubPages:
 | `android.signing` | `keyAlias` | Key alias — flexible value source |
 | `android.signing` | `keyPassword` | Key password — flexible value source |
 
-`windows-zip` contains the self-contained publish output and can be extracted
-without installing the application. The current `exe-sfx` generator uses the
-same graphical installer as `exe-setup`; choose `windows-zip` for a portable
-command-line application.
+`windows-single-file` publishes one portable `.exe` with the .NET runtime and
+native libraries bundled; users can run it without a .NET installation or a
+setup wizard. .NET extracts the bundle to a temporary directory when the
+executable runs, preserving assembly locations for applications that load
+plugins or inspect their files at runtime.
+`windows-zip` contains the multi-file self-contained publish output and must be
+extracted before use. `exe-setup` creates a graphical installer. The legacy
+`exe-sfx` generator currently uses that same graphical installer and should not
+be chosen for a command-line tool.
 
 ---
 
