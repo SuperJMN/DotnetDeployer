@@ -14,6 +14,7 @@ public enum PackageType
     ExeSfx,
     ExeSetup,
     Msix,
+    WindowsZip,
 
     // Mac
     Dmg,

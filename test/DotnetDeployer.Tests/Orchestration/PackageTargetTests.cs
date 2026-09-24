@@ -9,6 +9,7 @@ public class PackageTargetTests
     [InlineData("exe-setup:x64", PackageType.ExeSetup, Architecture.X64, "exe-setup", "x64")]
     [InlineData("setup:arm64", PackageType.ExeSetup, Architecture.Arm64, "exe-setup", "arm64")]
     [InlineData("msix:x86", PackageType.Msix, Architecture.X86, "msix", "x86")]
+    [InlineData("windows-zip:x64", PackageType.WindowsZip, Architecture.X64, "windows-zip", "x64")]
     [InlineData("deb:x64", PackageType.Deb, Architecture.X64, "deb", "x64")]
     public void Parse_ShouldReturnPackageTypeAndArchitecture(
         string raw,

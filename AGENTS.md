@@ -95,7 +95,7 @@ githubPages:
 | `github` | `repo` | Repository name |
 | `github` | `token` | GitHub token — flexible value source |
 | `github` | `outputDir` | Local directory for generated packages |
-| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
+| `github.packages[].formats[].type` | Package type: `appimage`, `deb`, `rpm`, `windows-zip`, `exe-sfx`, `exe-setup`, `msix`, `dmg`, `apk`, `aab` |
 | `github.packages[].formats[].arch` | Architectures: `x64`, `arm64`, `x86` |
 | `githubPages` | `enabled` | Enable/disable GitHub Pages deployment |
 | `githubPages` | `project` | Path to the WebAssembly project to deploy |
@@ -111,6 +111,11 @@ githubPages:
 | `android.signing` | `storePassword` | Store password — flexible value source |
 | `android.signing` | `keyAlias` | Key alias — flexible value source |
 | `android.signing` | `keyPassword` | Key password — flexible value source |
+
+`windows-zip` contains the self-contained publish output and can be extracted
+without installing the application. The current `exe-sfx` generator uses the
+same graphical installer as `exe-setup`; choose `windows-zip` for a portable
+command-line application.
 
 ---
 
@@ -297,7 +302,7 @@ github:
       formats:
         - type: appimage
           arch: [x64, arm64]
-        - type: exe-sfx
+        - type: windows-zip
           arch: [x64]
         - type: exe-setup
           arch: [x64]

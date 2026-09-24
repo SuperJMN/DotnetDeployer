@@ -193,6 +193,7 @@ public class GitHubReleaseDeployer : IGitHubReleaseDeployer
         DeployerPackageType.Rpm => "application/x-rpm",
         DeployerPackageType.ExeSfx or DeployerPackageType.ExeSetup => "application/vnd.microsoft.portable-executable",
         DeployerPackageType.Msix => "application/msix",
+        DeployerPackageType.WindowsZip => "application/zip",
         DeployerPackageType.Dmg => "application/x-apple-diskimage",
         DeployerPackageType.Apk => "application/vnd.android.package-archive",
         DeployerPackageType.Aab => "application/octet-stream",
