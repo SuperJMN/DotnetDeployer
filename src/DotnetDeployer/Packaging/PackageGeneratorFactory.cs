@@ -34,6 +34,7 @@ public class PackageGeneratorFactory
             [PackageType.ExeSfx] = new ExeSfxGenerator(),
             [PackageType.ExeSetup] = new ExeSetupGenerator(),
             [PackageType.Msix] = new MsixGenerator(),
+            [PackageType.WindowsZip] = new WindowsZipGenerator(),
 
             // Mac
             [PackageType.Dmg] = new DmgGenerator(),

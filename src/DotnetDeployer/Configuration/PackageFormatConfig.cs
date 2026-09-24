@@ -27,6 +27,7 @@ public class PackageFormatConfig
             "exe-sfx" or "exesfx" or "sfx" => PackageType.ExeSfx,
             "exe-setup" or "exesetup" or "setup" => PackageType.ExeSetup,
             "msix" => PackageType.Msix,
+            "windows-zip" => PackageType.WindowsZip,
             "dmg" => PackageType.Dmg,
             "apk" => PackageType.Apk,
             "aab" => PackageType.Aab,
