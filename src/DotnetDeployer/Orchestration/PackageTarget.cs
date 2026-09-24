@@ -15,6 +15,7 @@ public sealed record PackageTarget(PackageType Type, Architecture Architecture)
         PackageType.ExeSetup => "exe-setup",
         PackageType.Msix => "msix",
         PackageType.WindowsZip => "windows-zip",
+        PackageType.WindowsSingleFile => "windows-single-file",
         PackageType.Dmg => "dmg",
         PackageType.Apk => "apk",
         PackageType.Aab => "aab",

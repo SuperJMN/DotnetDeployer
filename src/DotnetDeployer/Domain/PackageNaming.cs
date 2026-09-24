@@ -32,7 +32,7 @@ public static class PackageNaming
     private static string GetPlatform(PackageType type) => type switch
     {
         PackageType.AppImage or PackageType.Deb or PackageType.Rpm => "linux",
-        PackageType.ExeSfx or PackageType.ExeSetup or PackageType.Msix or PackageType.WindowsZip => "windows",
+        PackageType.ExeSfx or PackageType.ExeSetup or PackageType.Msix or PackageType.WindowsZip or PackageType.WindowsSingleFile => "windows",
         PackageType.Dmg => "macos",
         PackageType.Apk or PackageType.Aab => "android",
         _ => "unknown"
@@ -70,6 +70,7 @@ public static class PackageNaming
         PackageType.ExeSetup => "setup.exe",
         PackageType.Msix => "msix",
         PackageType.WindowsZip => "zip",
+        PackageType.WindowsSingleFile => "exe",
         PackageType.Dmg => "dmg",
         PackageType.Apk => "apk",
         PackageType.Aab => "aab",

@@ -26,6 +26,25 @@ internal static class PackagePublishPlans
             trimmed: false,
             PublishVersionProperties.For(applicationInfo.Version.Value));
 
+    public static PackagePublishPlan WindowsSingleFile(string projectPath, Architecture arch, ApplicationInfo applicationInfo)
+    {
+        var properties = new Dictionary<string, string>(PublishVersionProperties.For(applicationInfo.Version.Value)
+            ?? new Dictionary<string, string>())
+        {
+            ["IncludeNativeLibrariesForSelfExtract"] = "true",
+            ["IncludeAllContentForSelfExtract"] = "true"
+        };
+
+        return PackagePublishPlan.Create(
+            projectPath,
+            arch.ToWindowsRid(),
+            "Release",
+            selfContained: true,
+            singleFile: true,
+            trimmed: false,
+            properties);
+    }
+
     public static PackagePublishPlan Mac(string projectPath, Architecture arch, ApplicationInfo applicationInfo) =>
         PackagePublishPlan.Create(
             projectPath,

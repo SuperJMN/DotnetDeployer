@@ -15,6 +15,7 @@ public enum PackageType
     ExeSetup,
     Msix,
     WindowsZip,
+    WindowsSingleFile,
 
     // Mac
     Dmg,
