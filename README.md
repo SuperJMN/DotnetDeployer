@@ -146,6 +146,14 @@ dotnetdeployer --package-only \
   --output-dir artifacts/manual-build
 ```
 
+Install the toolchains a repository needs to build, without packaging or publishing anything:
+
+```bash
+dotnetdeployer prepare --directory . --env-file toolchain.env
+```
+
+When any project targets Android, `prepare` installs a JDK and the Android SDK if they are missing. `--env-file` receives `JAVA_HOME`, `ANDROID_HOME` and `ANDROID_SDK_ROOT` as `KEY=VALUE` lines, so a later plain `dotnet build` or `dotnet test` can use the same toolchain. Build hosts such as Fleet workers run it before building a solution.
+
 ---
 
 ## Azure Pipelines Integration
