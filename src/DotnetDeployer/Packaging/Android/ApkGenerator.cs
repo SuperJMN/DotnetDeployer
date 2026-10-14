@@ -53,7 +53,7 @@ public class ApkGenerator : IPackageGenerator
         var versionArgs = AndroidVersionHelper.GetVersionArgs(applicationInfo.Version.Value);
         var signingArgs = signing.GetSigningArgs();
         var publishArgs = $"-c Release -f {targetFramework} {versionArgs} {signingArgs}";
-        logger.Debug("Running: dotnet publish {PublishArgs}", publishArgs);
+        logger.Debug("Running: dotnet publish {PublishArgs}", DefaultAndroidPublishProcessRunner.Sanitize(publishArgs));
         var executor = new AndroidPublishExecutor(logger, publishRunner);
 
         // Capture the publish-start timestamp so we can detect stale APKs left over

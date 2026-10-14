@@ -102,7 +102,7 @@ internal sealed class DefaultAndroidPublishProcessRunner : IAndroidPublishProces
         return new AndroidPublishProcessResult(process.ExitCode, combined);
     }
 
-    private static string Sanitize(string input)
+    internal static string Sanitize(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
