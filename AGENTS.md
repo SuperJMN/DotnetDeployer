@@ -122,6 +122,15 @@ extracted before use. `exe-setup` creates a graphical installer. The legacy
 `exe-sfx` generator currently uses that same graphical installer and should not
 be chosen for a command-line tool.
 
+`apk` and `aab` packages contain every Android ABI in a single file; the `arch`
+list does not split them. When the Android project does not set
+`RuntimeIdentifiers` or `RuntimeIdentifier`, DotnetDeployer publishes for
+`android-arm;android-arm64;android-x64` instead of the SDK default
+(`android-arm64;android-x64`), so the same APK installs on phones and on Android
+TV devices with a 32-bit ARM userland. Projects that set their own runtime
+identifiers, or that use CoreCLR or NativeAOT (no 32-bit Android runtime), keep
+their own choice.
+
 ---
 
 ## Step 2: Create `azure-pipelines.yml`
