@@ -52,7 +52,8 @@ public class AabGenerator : IPackageGenerator
         // Run dotnet publish for Android with AAB output
         var versionArgs = AndroidVersionHelper.GetVersionArgs(applicationInfo.Version.Value);
         var signingArgs = signing.GetSigningArgs();
-        var publishArgs = $"-c Release -f {targetFramework} -p:AndroidPackageFormat=aab {versionArgs} {signingArgs}";
+        using var abiDefaults = AndroidAbiDefaults.Create();
+        var publishArgs = $"-c Release -f {targetFramework} -p:AndroidPackageFormat=aab {versionArgs} {abiDefaults.GetPublishArgs()} {signingArgs}";
         logger.Debug("Running: dotnet publish {PublishArgs}", DefaultAndroidPublishProcessRunner.Sanitize(publishArgs));
         var executor = new AndroidPublishExecutor(logger, publishRunner);
         var publishResult = await executor.Publish(projectPath, publishArgs, projectDir);
