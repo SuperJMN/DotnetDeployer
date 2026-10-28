@@ -12,8 +12,15 @@ namespace DotnetDeployer.Packaging;
 public static class NupkgReleaseNotesInjector
 {
     /// <summary>
+    /// The longest release notes nuget.org accepts.
+    /// </summary>
+    public const int MaxReleaseNotesLength = 35000;
+
+    /// <summary>
     /// Writes <paramref name="releaseNotesMarkdown"/> to the NuGet
-    /// <c>&lt;releaseNotes&gt;</c> metadata element.
+    /// <c>&lt;releaseNotes&gt;</c> metadata element. Notes longer than
+    /// <see cref="MaxReleaseNotesLength"/> keep their first whole lines and end
+    /// with a line saying how many changes were left out.
     /// </summary>
     public static Result Inject(string nupkgPath, string releaseNotesMarkdown, ILogger logger)
     {
@@ -38,10 +45,37 @@ public static class NupkgReleaseNotesInjector
                 return;
             }
 
-            PatchReleaseNotes(metadata, ns, releaseNotesMarkdown);
+            var releaseNotes = Fit(releaseNotesMarkdown);
+            if (releaseNotes.Length < releaseNotesMarkdown.Length)
+            {
+                logger.Warning("Release notes of {Nuspec} cut to {Length} characters: NuGet accepts at most {Max}",
+                    nuspec.Name, releaseNotes.Length, MaxReleaseNotesLength);
+            }
+
+            PatchReleaseNotes(metadata, ns, releaseNotes);
             RewriteNuspec(zip, nuspec, doc);
         }, ex => $"Failed to inject release notes into {nupkgPath}: {ex.Message}");
     }
+
+    private static string Fit(string releaseNotesMarkdown)
+    {
+        if (releaseNotesMarkdown.Length <= MaxReleaseNotesLength)
+        {
+            return releaseNotesMarkdown;
+        }
+
+        var lines = releaseNotesMarkdown.Split('\n');
+        var budget = MaxReleaseNotesLength - OmissionFooter(lines.Count(IsChange)).Length - 2;
+        var length = 0;
+        var kept = lines.TakeWhile(line => (length += line.Length + 1) <= budget).ToList();
+
+        return string.Join('\n', kept).TrimEnd() + "\n\n" + OmissionFooter(lines.Skip(kept.Count).Count(IsChange));
+    }
+
+    private static bool IsChange(string line) => line.StartsWith("- ", StringComparison.Ordinal);
+
+    private static string OmissionFooter(int omitted) =>
+        $"_{omitted} more changes left out: NuGet limits release notes to {MaxReleaseNotesLength} characters._";
 
     private static ZipArchiveEntry? FindNuspec(ZipArchive zip)
     {

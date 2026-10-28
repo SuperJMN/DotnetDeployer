@@ -62,6 +62,24 @@ public class NupkgReleaseNotesInjectorTests : IDisposable
         AssertNuspecValue(pkg, "releaseNotes", "release notes");
     }
 
+    [Fact]
+    public void Inject_KeepsLongReleaseNotesWithinNuGetLimit()
+    {
+        var pkg = CreateNupkg("MyPkg", nuspecMetadataExtras: "");
+        var changes = Enumerable.Range(1, 1000).Select(i => $"- change number {i} with a reasonably long description (`{i:x8}`)");
+        var changelog = "# Changelog 1.0.0\n\n## Changes since v0.9.0\n\n" + string.Join('\n', changes);
+
+        var result = NupkgReleaseNotesInjector.Inject(pkg, changelog, Serilog.Core.Logger.None);
+
+        Assert.True(result.IsSuccess);
+        var notes = ReadNuspecValue(pkg, "releaseNotes");
+        var parts = notes.Split("\n\n_");
+        var keptChanges = parts[0].Split('\n').Count(line => line.StartsWith("- "));
+        Assert.True(notes.Length <= NupkgReleaseNotesInjector.MaxReleaseNotesLength);
+        Assert.StartsWith(parts[0], changelog);
+        Assert.Equal($"{1000 - keptChanges} more changes left out: NuGet limits release notes to 35000 characters._", parts[^1]);
+    }
+
     private string CreateNupkg(string id, string nuspecMetadataExtras, Dictionary<string, string>? extraEntries = null)
     {
         var path = Path.Combine(tempDir, $"{id}.1.0.0.nupkg");
@@ -111,6 +129,11 @@ public class NupkgReleaseNotesInjectorTests : IDisposable
 
     private static void AssertNuspecValue(string pkg, string elementName, string expectedValue)
     {
+        Assert.Equal(expectedValue, ReadNuspecValue(pkg, elementName));
+    }
+
+    private static string ReadNuspecValue(string pkg, string elementName)
+    {
         using var zip = ZipFile.OpenRead(pkg);
         var nuspec = zip.Entries.FirstOrDefault(e => !e.FullName.Contains('/') && e.Name.EndsWith(".nuspec"));
         Assert.NotNull(nuspec);
@@ -119,6 +142,6 @@ public class NupkgReleaseNotesInjectorTests : IDisposable
         var ns = doc.Root!.GetDefaultNamespace();
         var element = doc.Root.Element(ns + "metadata")?.Element(ns + elementName);
         Assert.NotNull(element);
-        Assert.Equal(expectedValue, element!.Value);
+        return element!.Value;
     }
 }
