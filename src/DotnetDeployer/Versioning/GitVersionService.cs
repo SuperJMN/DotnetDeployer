@@ -36,32 +36,58 @@ public class GitVersionService
         return await RunGitVersion(workingDirectory, logger);
     }
 
+    // GitVersion 7 changed its command line (/showvariable no longer parses), so stay on 6.x.
+    private const string SupportedGitVersion = "6.*";
+
     private async Task<Result> EnsureGitVersionInstalled(ILogger logger)
     {
-        // Check if GitVersion is already installed
-        var checkResult = await command.Execute("dotnet", "tool list -g");
-        if (checkResult.IsSuccess && checkResult.Value.Contains("gitversion.tool"))
+        var installed = await InstalledGitVersion();
+        if (installed.HasValue && installed.Value.StartsWith("6.", StringComparison.Ordinal))
         {
-            logger.Debug("GitVersion is already installed");
+            logger.Debug("GitVersion {Version} is already installed", installed.Value);
             return Result.Success();
         }
 
-        // Install GitVersion
-        logger.Information("Installing GitVersion tool...");
-        var installResult = await command.Execute("dotnet", "tool install -g GitVersion.Tool");
+        Result<string> installResult;
+        if (installed.HasValue)
+        {
+            logger.Information("Replacing GitVersion {Version} with {Supported}...", installed.Value, SupportedGitVersion);
+            installResult = await command.Execute("dotnet", $"tool update -g GitVersion.Tool --version {SupportedGitVersion} --allow-downgrade");
+        }
+        else
+        {
+            logger.Information("Installing GitVersion tool {Supported}...", SupportedGitVersion);
+            installResult = await command.Execute("dotnet", $"tool install -g GitVersion.Tool --version {SupportedGitVersion}");
+            if (installResult.IsFailure)
+            {
+                // Might already be installed but not listed (e.g. a different tool path)
+                installResult = await command.Execute("dotnet", $"tool update -g GitVersion.Tool --version {SupportedGitVersion} --allow-downgrade");
+            }
+        }
 
         if (installResult.IsFailure)
         {
-            // Try update if install fails (might already be installed but not in path)
-            var updateResult = await command.Execute("dotnet", "tool update -g GitVersion.Tool");
-            if (updateResult.IsFailure)
-            {
-                return Result.Failure($"Failed to install GitVersion: {installResult.Error}");
-            }
+            return Result.Failure($"Failed to install GitVersion: {installResult.Error}");
         }
 
         logger.Information("GitVersion installed successfully");
         return Result.Success();
+    }
+
+    private async Task<Maybe<string>> InstalledGitVersion()
+    {
+        var list = await command.Execute("dotnet", "tool list -g");
+        if (list.IsFailure)
+        {
+            return Maybe<string>.None;
+        }
+
+        return list.Value
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Where(columns => columns.Length >= 2 && columns[0].Equals("gitversion.tool", StringComparison.OrdinalIgnoreCase))
+            .Select(columns => columns[1])
+            .TryFirst();
     }
 
     private async Task<Result<string>> RunGitVersion(string workingDirectory, ILogger logger)
